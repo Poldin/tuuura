@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { motion, PanInfo, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { experiences } from './data/experiences';
 import { Experience } from './types';
-import { ThumbsUp, ThumbsDown, Heart, Menu, User, MapPin, CalendarFold } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Heart, Menu, User, MapPin, CalendarFold, Share2 } from 'lucide-react';
 
 export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -141,9 +141,9 @@ export default function Home() {
   };
 
   // Card component to avoid repetition
-  const ExperienceCard = ({ experience, isTop = false }: { experience: Experience, isTop?: boolean }) => (
+  const ExperienceCard = ({ experience }: { experience: Experience }) => (
     <div 
-      className={`relative bg-white rounded-xl overflow-hidden shadow-xl h-[60vh] w-full ${!isTop && 'scale-95 -z-10'}`}
+      className={`relative bg-white rounded-xl overflow-hidden shadow-xl h-[60vh] w-full`}
     >
       <div className="relative h-3/5 w-full">
         <Image
@@ -151,7 +151,7 @@ export default function Home() {
           alt={experience.title}
           fill
           style={{ objectFit: 'cover' }}
-          className="select-none" // Prevent image selection during drag
+          className="select-none" 
         />
         <div className="absolute top-4 left-4">
           <span className={`${getCategoryColor(experience.category)} text-white px-3 py-1 rounded-full text-sm font-semibold`}>
@@ -163,7 +163,7 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="p-5">
+      <div className="p-5 pb-10">
         <h2 className="text-xl text-gray-700 font-bold mb-2">{experience.title}</h2>
         <p className="text-gray-600 mb-3 text-sm">{experience.description}</p>
         
@@ -223,13 +223,20 @@ export default function Home() {
 
       <div className="relative flex justify-center w-full max-w-md h-[70vh] max-h-[70vh]">
         {/* Background card (next experience) */}
-        <div className="absolute w-full">
+        <motion.div 
+          className="absolute w-full"
+          initial={{ scale: 0.95 }}
+          animate={{ 
+            scale: direction !== null ? 1 : 0.95,
+            transition: { duration: 0.3 }
+          }}
+        >
           <ExperienceCard experience={nextExperience} />
-        </div>
+        </motion.div>
 
         {/* Top card (current experience) - draggable */}
         <AnimatePresence onExitComplete={handleExitComplete}>
-          {!isAnimating || direction === null ? (
+          {direction === null && (
             <motion.div
               key={currentExperience.id}
               ref={cardRef}
@@ -263,7 +270,7 @@ export default function Home() {
                 }
               }
             >
-              <ExperienceCard experience={currentExperience} isTop={true} />
+              <ExperienceCard experience={currentExperience} />
               
               {/* Directional indicators that appear during drag */}
               <motion.div 
@@ -293,11 +300,11 @@ export default function Home() {
                 <span className="text-white text-3xl font-bold mt-4">😍 Ahhhhhh!!!</span>
               </motion.div>
             </motion.div>
-          ) : null}
+          )}
         </AnimatePresence>
       </div>
 
-      <div className="flex justify-center space-x-10 w-full max-w-md mt-8">
+      <div className="flex justify-center space-x-10 w-full max-w-md mt-8 items-center">
         <motion.button 
           onClick={() => !isAnimating && handleSwipe('left')}
           className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-20 h-20 relative overflow-hidden"
@@ -354,6 +361,38 @@ export default function Home() {
           />
           
           <ThumbsUp className="relative z-10" />
+        </motion.button>
+
+        {/* Share Button */}
+        <motion.button 
+          onClick={(e) => {
+            e.stopPropagation();
+            if (navigator.share) {
+              navigator.share({
+                title: currentExperience.title,
+                text: currentExperience.description,
+                url: window.location.href,
+              }).catch(err => console.error('Error sharing:', err));
+            } else {
+              alert('Web Share API not supported on this browser.');
+            }
+          }}
+          className="bg-white text-gray-500 hover:bg-gray-600 hover:text-white p-5 rounded-full shadow-md transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
+          aria-label="Condividi"
+          whileHover={{ 
+            scale: 1.05,
+            boxShadow: "0 10px 15px -5px rgba(0, 0, 0, 0.1), 0 5px 5px -5px rgba(0, 0, 0, 0.04)"
+          }}
+          whileTap={{ scale: 0.9 }}
+        >
+          <motion.div 
+            className="absolute inset-0 bg-gray-100" 
+            initial={{ y: "100%" }}
+            whileHover={{ y: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 10 }}
+          />
+          
+          <Share2 className="relative z-10 w-5 h-5" />
         </motion.button>
       </div>
     </main>
