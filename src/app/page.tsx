@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { motion, PanInfo, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { experiences } from './data/experiences';
 import { Experience } from './types';
-import { ThumbsUp, ThumbsDown, Heart, Menu, User } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Heart, Menu, User, MapPin, CalendarFold } from 'lucide-react';
 
 export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -47,7 +47,7 @@ export default function Home() {
     if (swipeDirection === 'right') {
       // Animazione controllata verso destra
       const controls = animate(x, [0, 100, 300], {
-        duration: 0.5, // Mezzo secondo per l'animazione
+        duration: 0.2, // Mezzo secondo per l'animazione
         onComplete: () => {
           setDirection(swipeDirection);
           //setExitX(1000);
@@ -60,7 +60,7 @@ export default function Home() {
     } else if (swipeDirection === 'left') {
       // Animazione controllata verso sinistra
       const controls = animate(x, [0, -100, -300], {
-        duration: 0.5,
+        duration: 0.2,
         onComplete: () => {
           setDirection(swipeDirection);
           //setExitX(-1000);
@@ -72,7 +72,7 @@ export default function Home() {
     } else if (swipeDirection === 'up') {
       // Animazione controllata verso l'alto
       const controls = animate(y, [0, -100, -300], {
-        duration: 0.5,
+        duration: 0.2,
         onComplete: () => {
           setDirection(swipeDirection);
           //setExitX(0);
@@ -143,7 +143,7 @@ export default function Home() {
   // Card component to avoid repetition
   const ExperienceCard = ({ experience, isTop = false }: { experience: Experience, isTop?: boolean }) => (
     <div 
-      className={`relative bg-white rounded-xl overflow-hidden shadow-xl h-[60vh] max-h-[500px] w-full ${!isTop && 'scale-95 -z-10'}`}
+      className={`relative bg-white rounded-xl overflow-hidden shadow-xl h-[60vh] w-full ${!isTop && 'scale-95 -z-10'}`}
     >
       <div className="relative h-3/5 w-full">
         <Image
@@ -167,28 +167,23 @@ export default function Home() {
         <h2 className="text-xl text-gray-700 font-bold mb-2">{experience.title}</h2>
         <p className="text-gray-600 mb-3 text-sm">{experience.description}</p>
         
-        <div className="flex justify-between mt-2">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-            </svg>
+        
+          <div className="flex items-center my-1">
+            <MapPin className='w-4 h-4 text-gray-800'/>
             <span className="ml-1 text-sm text-gray-600">{experience.location}</span>
           </div>
           {experience.date && (
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-              </svg>
+            <div className="flex items-center my-1">
+              <CalendarFold className='w-4 h-4 text-gray-800'/>
               <span className="ml-1 text-sm text-gray-600">{experience.date}</span>
             </div>
           )}
-        </div>
+        
         
         {/* CTA Button */}
-        <div className="mt-4">
+        <div className="absolute bottom-4 left-4 right-4">
           <button 
-            className="w-full py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors shadow-md"
+            className="w-full py-2 px-4 bg-amber-700 hover:bg-amber-800 text-white font-semibold rounded-lg transition-colors shadow-md"
             onClick={(e) => {
               e.stopPropagation();
               handleCtaClick(e, 'https://www.youtube.com/')}}
@@ -213,7 +208,7 @@ export default function Home() {
           <User className="w-6 h-6 text-gray-700" />
         </motion.button>
         
-        <h1 className="text-3xl font-extrabold text-center text-gray-800">Tuuura</h1>
+        <h1 className="text-3xl font-extrabold text-center text-amber-700">Tuuura</h1>
         
         {/* Menu Button (right) */}
         <motion.button
@@ -252,17 +247,17 @@ export default function Home() {
                 direction === 'left' ? { 
                   x: -1000, 
                   opacity: 0,
-                  transition: { duration: 0.6 } 
+                  transition: { duration: 0.1 } 
                 } : 
                 direction === 'right' ? { 
                   x: 1000, 
                   opacity: 0,
-                  transition: { duration: 0.6 } 
+                  transition: { duration: 0.1 } 
                 } : 
                 direction === 'up' ? { 
                   y: -1000, 
                   opacity: 0,
-                  transition: { duration: 0.6 } 
+                  transition: { duration: 0.1 } 
                 } : { 
                   opacity: 0 
                 }
@@ -272,27 +267,30 @@ export default function Home() {
               
               {/* Directional indicators that appear during drag */}
               <motion.div 
-                className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex items-center justify-center"
+                className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
                 style={{ opacity: leftIndicatorOpacity }}
                 initial={{ opacity: 0 }}
               >
                 <ThumbsDown className="text-white w-32 h-32" />
+                <span className="text-white text-3xl font-bold mt-4">😒 bleah.</span>
               </motion.div>
               
               <motion.div 
-                className="absolute top-0 left-0 right-0 bottom-0 bg-green-500 bg-opacity-30 rounded-xl flex items-center justify-center"
+                className="absolute top-0 left-0 right-0 bottom-0 bg-green-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
                 style={{ opacity: rightIndicatorOpacity }}
                 initial={{ opacity: 0 }}
               >
                 <ThumbsUp className="text-white w-32 h-32" />
+                <span className="text-white text-3xl font-bold mt-4">🙂 uhuuuh!?</span>
               </motion.div>
               
               <motion.div 
-                className="absolute top-0 left-0 right-0 bottom-0 bg-red-800 bg-opacity-30 rounded-xl flex items-center justify-center"
+                className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
                 style={{ opacity: upIndicatorOpacity }}
                 initial={{ opacity: 0 }}
               >
                 <Heart className="text-white w-32 h-32" />
+                <span className="text-white text-3xl font-bold mt-4">😍 Ahhhhhh!!!</span>
               </motion.div>
             </motion.div>
           ) : null}
@@ -321,7 +319,7 @@ export default function Home() {
         
         <motion.button 
           onClick={() => !isAnimating && handleSwipe('up')}
-          className="bg-white text-red-800 hover:bg-red-800 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-20 h-20 relative overflow-hidden"
+          className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-20 h-20 relative overflow-hidden"
           aria-label="Adoro!"
           whileHover={{ 
             scale: 1.1,
@@ -354,6 +352,7 @@ export default function Home() {
             whileHover={{ y: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 10 }}
           />
+          
           <ThumbsUp className="relative z-10" />
         </motion.button>
       </div>
