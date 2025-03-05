@@ -221,7 +221,7 @@ export default function Home() {
         </motion.button>
       </header>
 
-      <div className="relative flex justify-center w-full max-w-md h-[70vh] max-h-[70vh]">
+      <div className="relative flex justify-center w-full max-w-md max-h-[70vh]">
         {/* Background card (next experience) */}
         <motion.div 
           className="absolute w-full"
@@ -304,10 +304,10 @@ export default function Home() {
         </AnimatePresence>
       </div>
 
-      <div className="flex justify-center space-x-10 w-full max-w-md mt-8 items-center">
+      <div className="fixed bottom-8 left-0 right-0 flex justify-center space-x-2 w-full px-4 items-center">
         <motion.button 
           onClick={() => !isAnimating && handleSwipe('left')}
-          className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-20 h-20 relative overflow-hidden"
+          className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
           aria-label="Non mi interessa"
           whileHover={{ 
             scale: 1.1,
@@ -326,7 +326,7 @@ export default function Home() {
         
         <motion.button 
           onClick={() => !isAnimating && handleSwipe('up')}
-          className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-20 h-20 relative overflow-hidden"
+          className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
           aria-label="Adoro!"
           whileHover={{ 
             scale: 1.1,
@@ -345,7 +345,7 @@ export default function Home() {
         
         <motion.button 
           onClick={() => !isAnimating && handleSwipe('right')}
-          className="bg-white text-green-500 hover:bg-green-500 hover:text-white p-5 rounded-full shadow-lg transition-all flex items-center justify-center w-20 h-20 relative overflow-hidden"
+          className="bg-white text-green-500 hover:bg-green-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
           aria-label="Interessante"
           whileHover={{ 
             scale: 1.1,
@@ -377,7 +377,7 @@ export default function Home() {
               alert('Web Share API not supported on this browser.');
             }
           }}
-          className="bg-white text-gray-500 hover:bg-gray-600 hover:text-white p-5 rounded-full shadow-md transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
+          className="bg-white text-gray-500 hover:bg-gray-600 hover:text-white rounded-full shadow-md transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
           aria-label="Condividi"
           whileHover={{ 
             scale: 1.05,
