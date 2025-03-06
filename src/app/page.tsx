@@ -205,8 +205,23 @@ export default function Home() {
     </div>
   );
 
+  // SVG pattern con piccole T grigie semitrasparenti
+  const TPattern = () => (
+    <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0">
+      <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" className="opacity-40">
+        <pattern id="t-pattern" x="0" y="0" width="50" height="50" patternUnits="userSpaceOnUse">
+          <text x="10" y="30" fontSize="20" fill="currentColor" className="text-gray-400">
+            T
+          </text>
+        </pattern>
+        <rect width="100%" height="100%" fill="url(#t-pattern)" />
+      </svg>
+    </div>
+  );
+
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-8 bg-gray-100">
+      <TPattern />
       <header className="w-full max-w-md mb-4 flex justify-between items-center">
         {/* Login Button (left) */}
         <motion.button
