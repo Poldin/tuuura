@@ -4,7 +4,7 @@ export type Experience = {
     description: string;
     imageUrl: string;
     category: 'travel' | 'sport' | 'event' | 'food' | 'culture';
-    price: number;
+    price: string;
     location: string;
     date?: string;
   };

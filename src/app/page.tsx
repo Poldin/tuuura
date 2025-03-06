@@ -14,6 +14,7 @@ export default function Home() {
   // const [exitY, setExitY] = useState<number>(0);
   const [direction, setDirection] = useState<'left' | 'right' | 'up' | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [buttonAnimation, setButtonAnimation] = useState<'left' | 'right' | 'up' | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   
   // Motion values for dragging
@@ -47,12 +48,9 @@ export default function Home() {
     if (swipeDirection === 'right') {
       // Animazione controllata verso destra
       const controls = animate(x, [0, 100, 300], {
-        duration: 0.2, // Mezzo secondo per l'animazione
+        duration: 0.3, 
         onComplete: () => {
           setDirection(swipeDirection);
-          //setExitX(1000);
-          //setExitY(0);
-          //setLikedExperiences(prev => [...prev, currentExperience.id]);
         }
       });
       
@@ -60,11 +58,9 @@ export default function Home() {
     } else if (swipeDirection === 'left') {
       // Animazione controllata verso sinistra
       const controls = animate(x, [0, -100, -300], {
-        duration: 0.2,
+        duration: 0.3,
         onComplete: () => {
           setDirection(swipeDirection);
-          //setExitX(-1000);
-          //setExitY(0);
         }
       });
       
@@ -72,17 +68,40 @@ export default function Home() {
     } else if (swipeDirection === 'up') {
       // Animazione controllata verso l'alto
       const controls = animate(y, [0, -100, -300], {
-        duration: 0.2,
+        duration: 0.5,
         onComplete: () => {
           setDirection(swipeDirection);
-          //setExitX(0);
-          //setExitY(-1000);
-          //setLikedExperiences(prev => [...prev, currentExperience.id]);
         }
       });
       
       return () => controls.stop();
     }
+  };
+
+  const handleButtonClick = (buttonType: 'left' | 'right' | 'up') => {
+    if (isAnimating) return;
+    
+    setIsAnimating(true);
+    setButtonAnimation(buttonType);
+    
+    // Attendiamo mezzo secondo prima di impostare la direzione di uscita
+    setTimeout(() => {
+      // Forziamo il reset di x e y per assicurarci che la card esca correttamente
+      x.set(0);
+      y.set(0);
+      
+      // Applichiamo manualmente l'animazione di uscita nella direzione desiderata
+      if (buttonType === 'left') {
+        animate(x, -1000, { duration: 0.5 });
+      } else if (buttonType === 'right') {
+        animate(x, 500, { duration: 0.5 });
+      } else if (buttonType === 'up') {
+        animate(y, -1000, { duration: 0.5 });
+      }
+      
+      // Imposta anche la direzione per gestire la prossima carta
+      setDirection(buttonType);
+    }, 500);
   };
 
   const handleExitComplete = () => {
@@ -94,6 +113,7 @@ export default function Home() {
     
     // Reset states after card change
     setDirection(null);
+    setButtonAnimation(null);
     //setExitX(0);
     //setExitY(0);
     setIsAnimating(false);
@@ -159,7 +179,7 @@ export default function Home() {
           </span>
         </div>
         <div className="absolute top-4 right-4 bg-white bg-opacity-90 px-3 py-1 rounded-xl">
-          <span className="font-bold text-gray-800">{experience.price}€</span>
+          <span className="font-bold text-gray-800">{experience.price}</span>
         </div>
       </div>
 
@@ -180,17 +200,7 @@ export default function Home() {
           )}
         
         
-        {/* CTA Button */}
-        <div className="absolute bottom-4 left-4 right-4">
-          <button 
-            className="w-full py-2 px-4 bg-amber-700 hover:bg-amber-800 text-white font-semibold rounded-lg transition-colors shadow-md"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCtaClick(e, 'https://www.youtube.com/')}}
-          >
-            Scopri di più!
-          </button>
-        </div>
+        
       </div>
     </div>
   );
@@ -232,6 +242,20 @@ export default function Home() {
           }}
         >
           <ExperienceCard experience={nextExperience} />
+
+          {/* CTA Button */}
+        <div className="mt-4">
+          <button 
+            className="w-full py-2 px-4 bg-amber-700 hover:bg-amber-800 text-white font-semibold rounded-lg transition-colors shadow-md"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCtaClick(e, 'https://www.youtube.com/')}}
+          >
+            Scopri di più!
+          </button>
+        </div>
+
+
         </motion.div>
 
         {/* Top card (current experience) - draggable */}
@@ -254,17 +278,17 @@ export default function Home() {
                 direction === 'left' ? { 
                   x: -1000, 
                   opacity: 0,
-                  transition: { duration: 0.1 } 
+                  transition: { duration: 0.5 } 
                 } : 
                 direction === 'right' ? { 
                   x: 1000, 
                   opacity: 0,
-                  transition: { duration: 0.1 } 
+                  transition: { duration: 0.5 } 
                 } : 
                 direction === 'up' ? { 
                   y: -1000, 
                   opacity: 0,
-                  transition: { duration: 0.1 } 
+                  transition: { duration: 0.5 } 
                 } : { 
                   opacity: 0 
                 }
@@ -272,7 +296,7 @@ export default function Home() {
             >
               <ExperienceCard experience={currentExperience} />
               
-              {/* Directional indicators that appear during drag */}
+              {/* Directional indicators during drag */}
               <motion.div 
                 className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
                 style={{ opacity: leftIndicatorOpacity }}
@@ -299,14 +323,48 @@ export default function Home() {
                 <Heart className="text-white w-32 h-32" />
                 <span className="text-white text-3xl font-bold mt-4">😍 Ahhhhhh!!!</span>
               </motion.div>
+              
+              {/* Button animation overlays */}
+              {buttonAnimation === 'left' && (
+                <motion.div 
+                  className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  <ThumbsDown className="text-white w-32 h-32" />
+                  <span className="text-white text-3xl font-bold mt-4">😒 bleah.</span>
+                </motion.div>
+              )}
+              
+              {buttonAnimation === 'right' && (
+                <motion.div 
+                  className="absolute top-0 left-0 right-0 bottom-0 bg-green-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  <ThumbsUp className="text-white w-32 h-32" />
+                  <span className="text-white text-3xl font-bold mt-4">🙂 uhuuuh!?</span>
+                </motion.div>
+              )}
+              
+              {buttonAnimation === 'up' && (
+                <motion.div 
+                  className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  <Heart className="text-white w-32 h-32" />
+                  <span className="text-white text-3xl font-bold mt-4">😍 Ahhhhhh!!!</span>
+                </motion.div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      <div className="fixed bottom-8 left-0 right-0 flex justify-center space-x-2 w-full px-4 items-center">
+      <div className="absolute bottom-8 left-0 right-0 flex justify-center space-x-2 w-full px-4 items-center">
         <motion.button 
-          onClick={() => !isAnimating && handleSwipe('left')}
+          onClick={() => !isAnimating && handleButtonClick('left')}
           className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
           aria-label="Non mi interessa"
           whileHover={{ 
@@ -325,7 +383,7 @@ export default function Home() {
         </motion.button>
         
         <motion.button 
-          onClick={() => !isAnimating && handleSwipe('up')}
+          onClick={() => !isAnimating && handleButtonClick('up')}
           className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
           aria-label="Adoro!"
           whileHover={{ 
@@ -344,7 +402,7 @@ export default function Home() {
         </motion.button>
         
         <motion.button 
-          onClick={() => !isAnimating && handleSwipe('right')}
+          onClick={() => !isAnimating && handleButtonClick('right')}
           className="bg-white text-green-500 hover:bg-green-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
           aria-label="Interessante"
           whileHover={{ 
