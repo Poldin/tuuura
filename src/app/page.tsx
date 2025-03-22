@@ -5,7 +5,8 @@ import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { experiences } from './data/experiences';
 import { Experience } from './types';
-import { ThumbsUp, ThumbsDown, Menu, User, Share2, X, Telescope } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, User, Share2, X, Telescope } from 'lucide-react';
+import HamburgerMenu from './components/hamburgermenu/hamburgermenucomponent';
 
 export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -134,14 +135,7 @@ export default function Home() {
         
         <h1 className="text-3xl font-bold text-center text-amber-800">Tuuura</h1>
         
-        <motion.button
-          className="p-2 rounded-full bg-white shadow-md"
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.95 }}
-          aria-label="Menu"
-        >
-          <Menu className="w-6 h-6 text-gray-700" />
-        </motion.button>
+        <HamburgerMenu />
       </header>
 
       <div className="relative flex flex-col justify-center items-center w-full max-w-md overflow-hidden">
