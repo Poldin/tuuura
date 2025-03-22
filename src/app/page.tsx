@@ -1,209 +1,109 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
-import { motion, PanInfo, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { experiences } from './data/experiences';
 import { Experience } from './types';
-import { ThumbsUp, ThumbsDown, Heart, Menu, User, MapPin, CalendarFold, Share2 } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Menu, User, Share2, X, Telescope } from 'lucide-react';
 
 export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(0);
-  // const [likedExperiences, setLikedExperiences] = useState<string[]>([]);
-  // const [exitX, setExitX] = useState<number>(0);
-  // const [exitY, setExitY] = useState<number>(0);
-  const [direction, setDirection] = useState<'left' | 'right' | 'up' | null>(null);
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [buttonAnimation, setButtonAnimation] = useState<'left' | 'right' | 'up' | null>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-  
-  // Motion values for dragging
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  
-  // Calculate rotation based on x position
-  const rotate = useTransform(x, [-200, 200], [-10, 10]);
-  
-  // Calculate opacity for directional indicators
-  const leftIndicatorOpacity = useTransform(x, [-50, 0], [1, 0]);
-  const rightIndicatorOpacity = useTransform(x, [0, 50], [0, 1]);
-  const upIndicatorOpacity = useTransform(y, [-50, 0], [1, 0]);
+  const [activeButton, setActiveButton] = useState<'left' | 'right' | 'up' | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
   
   const currentExperience = experiences[currentIndex];
-  const nextIndex = (currentIndex + 1) % experiences.length;
-  const nextExperience = experiences[nextIndex];
-
-  // Reset motion values when currentIndex changes
-  useEffect(() => {
-    x.set(0);
-    y.set(0);
-  }, [currentIndex, x, y]);
-
-  const handleSwipe = (swipeDirection: 'left' | 'right' | 'up') => {
-    if (isAnimating) return;
-    
-    setIsAnimating(true);
-    
-    // Usiamo animation.start di Framer Motion per animare la carta prima dell'uscita
-    if (swipeDirection === 'right') {
-      // Animazione controllata verso destra
-      const controls = animate(x, [0, 100, 300], {
-        duration: 0.3, 
-        onComplete: () => {
-          setDirection(swipeDirection);
-        }
-      });
-      
-      return () => controls.stop();
-    } else if (swipeDirection === 'left') {
-      // Animazione controllata verso sinistra
-      const controls = animate(x, [0, -100, -300], {
-        duration: 0.3,
-        onComplete: () => {
-          setDirection(swipeDirection);
-        }
-      });
-      
-      return () => controls.stop();
-    } else if (swipeDirection === 'up') {
-      // Animazione controllata verso l'alto
-      const controls = animate(y, [0, -100, -300], {
-        duration: 0.5,
-        onComplete: () => {
-          setDirection(swipeDirection);
-        }
-      });
-      
-      return () => controls.stop();
-    }
-  };
 
   const handleButtonClick = (buttonType: 'left' | 'right' | 'up') => {
-    if (isAnimating) return;
+    if (isTransitioning) return;
     
-    setIsAnimating(true);
-    setButtonAnimation(buttonType);
+    setIsTransitioning(true);
+    setActiveButton(buttonType);
     
-    // Attendiamo mezzo secondo prima di impostare la direzione di uscita
+    // Durante l'overlay, prepariamo già l'indice per la prossima carta (invisibile all'utente)
     setTimeout(() => {
-      // Forziamo il reset di x e y per assicurarci che la card esca correttamente
-      x.set(0);
-      y.set(0);
-      
-      // Applichiamo manualmente l'animazione di uscita nella direzione desiderata
-      if (buttonType === 'left') {
-        animate(x, -1000, { duration: 0.5 });
-      } else if (buttonType === 'right') {
-        animate(x, 500, { duration: 0.5 });
-      } else if (buttonType === 'up') {
-        animate(y, -1000, { duration: 0.5 });
+      // Cambiamo l'indice mentre l'overlay è ancora visibile
+      if (currentIndex < experiences.length - 1) {
+        setCurrentIndex(prevIndex => prevIndex + 1);
+      } else {
+        setCurrentIndex(0);
       }
       
-      // Imposta anche la direzione per gestire la prossima carta
-      setDirection(buttonType);
-    }, 500);
+      // Aspettiamo ancora un momento e poi rimuoviamo l'overlay
+      setTimeout(() => {
+        setActiveButton(null);
+        
+        // Permettiamo nuove transizioni dopo che la nuova carta è completamente visibile
+        setTimeout(() => {
+          setIsTransitioning(false);
+        }, 300);
+      }, 300);
+    }, 200);
   };
 
-  const handleExitComplete = () => {
-    if (currentIndex < experiences.length - 1) {
-      setCurrentIndex(prevIndex => prevIndex + 1);
-    } else {
-      setCurrentIndex(0); // Ricomincia da capo quando finiscono le esperienze
-    }
-    
-    // Reset states after card change
-    setDirection(null);
-    setButtonAnimation(null);
-    //setExitX(0);
-    //setExitY(0);
-    setIsAnimating(false);
+  const openPopup = () => {
+    setShowPopup(true);
   };
 
-  const handleDragEnd = (e: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    if (isAnimating) return;
-    
-    // Determine the swipe threshold (punto di rottura)
-    const SWIPE_THRESHOLD = 80;
-    
-    // Calculate which direction has the largest offset
-    const isHorizontal = Math.abs(info.offset.x) > Math.abs(info.offset.y);
-    
-    if (isHorizontal) {
-      if (Math.abs(info.offset.x) > SWIPE_THRESHOLD) {
-        const direction = info.offset.x > 0 ? 'right' : 'left';
-        handleSwipe(direction);
-      }
-    } else {
-      if (info.offset.y < -SWIPE_THRESHOLD) {
-        handleSwipe('up');
-      }
-    }
+  const closePopup = () => {
+    setShowPopup(false);
   };
 
-  const getCategoryColor = (category: Experience['category']) => {
-    const colors = {
-      travel: 'bg-blue-500',
-      sport: 'bg-green-500',
-      event: 'bg-purple-500',
-      food: 'bg-yellow-500',
-      culture: 'bg-red-500',
-    };
-    return colors[category];
-  };
-
-  // Aggiunta funzione per gestire il click sul CTA
-  const handleCtaClick = (e: React.MouseEvent, url: string) => {
-    // Ferma la propagazione dell'evento per evitare lo swipe
+  const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    // Apri l'URL in una nuova finestra/tab
-    window.open(url, '_blank');
+    if (navigator.share) {
+      navigator.share({
+        title: currentExperience.title,
+        text: currentExperience.description,
+        url: window.location.href,
+      }).catch(err => console.error('Error sharing:', err));
+    } else {
+      alert('Web Share API not supported on this browser.');
+    }
   };
 
   // Card component to avoid repetition
-  const ExperienceCard = ({ experience }: { experience: Experience }) => (
-    <div 
-      className={`relative bg-white rounded-xl overflow-hidden shadow-xl h-[60vh] w-full`}
-    >
-      <div className="relative h-3/5 w-full">
-        <Image
-          src={experience.imageUrl}
-          alt={experience.title}
-          fill
-          style={{ objectFit: 'cover' }}
-          className="select-none" 
-        />
-        <div className="absolute top-4 left-4">
-          <span className={`${getCategoryColor(experience.category)} text-white px-3 py-1 rounded-full text-sm font-semibold`}>
-            {experience.category}
-          </span>
-        </div>
-        <div className="absolute top-4 right-4 bg-white bg-opacity-90 px-3 py-1 rounded-xl">
-          <span className="font-bold text-gray-800">{experience.price}</span>
-        </div>
-      </div>
+  const ExperienceCard = ({ experience, onClick }: { experience: Experience, onClick: () => void }) => {
+    // Funzione per troncare il testo a un numero specifico di caratteri
+    const truncateText = (text: string, maxLength: number = 120) => {
+      if (text.length <= maxLength) return text;
+      return text.substring(0, maxLength).trim();
+    };
 
-      <div className="p-5 pb-10">
-        <h2 className="text-xl text-gray-700 font-bold mb-2">{experience.title}</h2>
-        <p className="text-gray-600 mb-3 text-sm">{experience.description}</p>
-        
-        
-          <div className="flex items-center my-1">
-            <MapPin className='w-4 h-4 text-gray-800'/>
-            <span className="ml-1 text-sm text-gray-600">{experience.location}</span>
+    const truncatedDescription = truncateText(experience.description);
+    const needsTruncation = experience.description.length > truncatedDescription.length;
+
+    return (
+      <div 
+        className="relative bg-white rounded-xl overflow-hidden shadow-xl h-[60vh] w-full cursor-pointer"
+        onClick={onClick}
+      >
+        <div className="relative h-3/5 w-full">
+          <Image
+            src={experience.imageUrl}
+            alt={experience.title}
+            fill
+            style={{ objectFit: 'cover' }}
+            className="select-none" 
+          />
+        </div>
+
+        <div className="p-5 pb-10">
+          <div className='flex items-start gap-3 mb-3'>
+            <h2 className="text-2xl text-gray-800">€{experience.price} <b>{experience.title}</b></h2>
           </div>
-          {experience.date && (
-            <div className="flex items-center my-1">
-              <CalendarFold className='w-4 h-4 text-gray-800'/>
-              <span className="ml-1 text-sm text-gray-600">{experience.date}</span>
-            </div>
-          )}
-        
-        
-        
+
+          <p className="text-gray-600 mb-3 text-sm">
+            {truncatedDescription}
+            {needsTruncation && (
+              <span className="text-gray-700 font-medium"> ...<u>clicca per scoprire di più</u></span>
+            )}
+          </p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // SVG pattern con piccole T grigie semitrasparenti
   const TPattern = () => (
@@ -223,7 +123,6 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center p-4 md:p-8 bg-gray-100">
       <TPattern />
       <header className="w-full max-w-md mb-4 flex justify-between items-center">
-        {/* Login Button (left) */}
         <motion.button
           className="p-2 rounded-full bg-white shadow-md"
           whileHover={{ scale: 1.1 }}
@@ -233,9 +132,8 @@ export default function Home() {
           <User className="w-6 h-6 text-gray-700" />
         </motion.button>
         
-        <h1 className="text-3xl font-extrabold text-center text-amber-700">Tuuura</h1>
+        <h1 className="text-3xl font-bold text-center text-amber-800">Tuuura</h1>
         
-        {/* Menu Button (right) */}
         <motion.button
           className="p-2 rounded-full bg-white shadow-md"
           whileHover={{ scale: 1.1 }}
@@ -246,228 +144,258 @@ export default function Home() {
         </motion.button>
       </header>
 
-      <div className="relative flex justify-center w-full max-w-md max-h-[70vh]">
-        {/* Background card (next experience) */}
-        <motion.div 
-          className="absolute w-full"
-          initial={{ scale: 0.95 }}
-          animate={{ 
-            scale: direction !== null ? 1 : 0.95,
-            transition: { duration: 0.3 }
-          }}
-        >
-          <ExperienceCard experience={nextExperience} />
-
-          {/* CTA Button */}
-        <div className="mt-4">
-          <button 
-            className="w-full py-2 px-4 bg-amber-700 hover:bg-amber-800 text-white font-semibold rounded-lg transition-colors shadow-md"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCtaClick(e, 'https://www.youtube.com/')}}
-          >
-            Scopri di più!
-          </button>
+      <div className="relative flex flex-col justify-center items-center w-full max-w-md overflow-hidden">
+        {/* Carta principale (currentExperience) */}
+        <div className="w-full">
+          <ExperienceCard experience={currentExperience} onClick={openPopup} />
+          
+          <div className="mt-4 w-full flex gap-2">
+            <motion.button
+              onClick={openPopup}
+              className="text-amber-700 bg-white py-3 px-6 rounded-lg shadow-md text-center hover:text-white flex items-center justify-center gap-2 relative overflow-hidden w-full"
+              whileHover={{ scale: 1.02, backgroundColor: "#d97706" }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <Telescope className="relative w-4 h-4" />
+              <span className="relative">scopri di più</span>
+            </motion.button>
+            
+            {/* Pulsante Condividi accanto a Scopri di più */}
+            <motion.button 
+              onClick={handleShare}
+              className="bg-white text-gray-700 hover:bg-gray-700 hover:text-white rounded-lg shadow-md transition-all flex items-center justify-center px-4 py-3 gap-2 relative overflow-hidden w-full"
+              aria-label="Condividi"
+              whileHover={{ 
+                scale: 1.02,
+                boxShadow: "0 10px 15px -5px rgba(0, 0, 0, 0.1), 0 5px 5px -5px rgba(0, 0, 0, 0.04)"
+              }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <Share2 className="relative w-4 h-4" />
+              <span className="relative">condividi</span>
+            </motion.button>
+          </div>
         </div>
 
-
-        </motion.div>
-
-        {/* Top card (current experience) - draggable */}
-        <AnimatePresence onExitComplete={handleExitComplete}>
-          {direction === null && (
-            <motion.div
-              key={currentExperience.id}
-              ref={cardRef}
-              className="absolute w-full cursor-grab active:cursor-grabbing"
-              drag={!isAnimating}
-              dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-              onDragEnd={handleDragEnd}
-              dragElastic={0.7}
-              style={{ x, y, rotate }}
-              transition={{ type: "spring", stiffness: 600, damping: 30 }}
-              whileTap={{ scale: 0.98 }}
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={
-                direction === 'left' ? { 
-                  x: -1000, 
-                  opacity: 0,
-                  transition: { duration: 0.5 } 
-                } : 
-                direction === 'right' ? { 
-                  x: 1000, 
-                  opacity: 0,
-                  transition: { duration: 0.5 } 
-                } : 
-                direction === 'up' ? { 
-                  y: -1000, 
-                  opacity: 0,
-                  transition: { duration: 0.5 } 
-                } : { 
-                  opacity: 0 
-                }
-              }
+        {/* Overlay colorati */}
+        <AnimatePresence>
+          {activeButton === 'left' && (
+            <motion.div 
+              className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
             >
-              <ExperienceCard experience={currentExperience} />
-              
-              {/* Directional indicators during drag */}
-              <motion.div 
-                className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
-                style={{ opacity: leftIndicatorOpacity }}
-                initial={{ opacity: 0 }}
-              >
-                <ThumbsDown className="text-white w-32 h-32" />
-                <span className="text-white text-3xl font-bold mt-4">😒 bleah.</span>
-              </motion.div>
-              
-              <motion.div 
-                className="absolute top-0 left-0 right-0 bottom-0 bg-green-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
-                style={{ opacity: rightIndicatorOpacity }}
-                initial={{ opacity: 0 }}
-              >
-                <ThumbsUp className="text-white w-32 h-32" />
-                <span className="text-white text-3xl font-bold mt-4">🙂 uhuuuh!?</span>
-              </motion.div>
-              
-              <motion.div 
-                className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
-                style={{ opacity: upIndicatorOpacity }}
-                initial={{ opacity: 0 }}
-              >
-                <Heart className="text-white w-32 h-32" />
-                <span className="text-white text-3xl font-bold mt-4">😍 Ahhhhhh!!!</span>
-              </motion.div>
-              
-              {/* Button animation overlays */}
-              {buttonAnimation === 'left' && (
-                <motion.div 
-                  className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  <ThumbsDown className="text-white w-32 h-32" />
-                  <span className="text-white text-3xl font-bold mt-4">😒 bleah.</span>
-                </motion.div>
-              )}
-              
-              {buttonAnimation === 'right' && (
-                <motion.div 
-                  className="absolute top-0 left-0 right-0 bottom-0 bg-green-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  <ThumbsUp className="text-white w-32 h-32" />
-                  <span className="text-white text-3xl font-bold mt-4">🙂 uhuuuh!?</span>
-                </motion.div>
-              )}
-              
-              {buttonAnimation === 'up' && (
-                <motion.div 
-                  className="absolute top-0 left-0 right-0 bottom-0 bg-red-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                >
-                  <Heart className="text-white w-32 h-32" />
-                  <span className="text-white text-3xl font-bold mt-4">😍 Ahhhhhh!!!</span>
-                </motion.div>
-              )}
+              <ThumbsDown className="text-white w-32 h-32" />
+              <span className="text-white text-3xl font-bold mt-4">😒 bleah.</span>
+            </motion.div>
+          )}
+          
+          {activeButton === 'right' && (
+            <motion.div 
+              className="absolute top-0 left-0 right-0 bottom-0 bg-green-500 bg-opacity-30 rounded-xl flex flex-col items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <ThumbsUp className="text-white w-32 h-32" />
+              <span className="text-white text-3xl font-bold mt-4">🙂 uhuuuh!</span>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      <div className="absolute bottom-8 left-0 right-0 flex justify-center space-x-2 w-full px-4 items-center">
-        <motion.button 
-          onClick={() => !isAnimating && handleButtonClick('left')}
-          className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
-          aria-label="Non mi interessa"
-          whileHover={{ 
-            scale: 1.1,
-            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-          }}
-          whileTap={{ scale: 0.85 }}
-        >
-          <motion.div 
-            className="absolute inset-0 bg-red-100" 
-            initial={{ y: "100%" }}
-            whileHover={{ y: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 10 }}
-          />
-          <ThumbsDown className="relative z-10" />
-        </motion.button>
-        
-        <motion.button 
-          onClick={() => !isAnimating && handleButtonClick('up')}
-          className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
-          aria-label="Adoro!"
-          whileHover={{ 
-            scale: 1.1,
-            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-          }}
-          whileTap={{ scale: 0.85 }}
-        >
-          <motion.div 
-            className="absolute inset-0 bg-red-700" 
-            initial={{ y: "100%" }}
-            whileHover={{ y: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 10 }}
-          />
-          <Heart className="relative z-10" />
-        </motion.button>
-        
-        <motion.button 
-          onClick={() => !isAnimating && handleButtonClick('right')}
-          className="bg-white text-green-500 hover:bg-green-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
-          aria-label="Interessante"
-          whileHover={{ 
-            scale: 1.1,
-            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-          }}
-          whileTap={{ scale: 0.85 }}
-        >
-          <motion.div 
-            className="absolute inset-0 bg-green-100" 
-            initial={{ y: "100%" }}
-            whileHover={{ y: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 10 }}
-          />
+      {/* Pulsanti in fondo alla pagina principale */}
+      <div className="absolute bottom-8 left-0 right-0 flex justify-center w-full px-4">
+        <div className="w-full max-w-md flex justify-between space-x-2 items-center">
+          <motion.button 
+            onClick={() => !isTransitioning && handleButtonClick('left')}
+            className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
+            aria-label="Non mi interessa"
+            whileHover={{ 
+              scale: 1.1,
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+            }}
+            whileTap={{ scale: 0.85 }}
+            disabled={isTransitioning}
+          >
+            <motion.div 
+              className="absolute inset-0 bg-red-100" 
+              initial={{ y: "100%" }}
+              whileHover={{ y: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 10 }}
+            />
+            <ThumbsDown className="relative z-10" />
+          </motion.button>
           
-          <ThumbsUp className="relative z-10" />
-        </motion.button>
-
-        {/* Share Button */}
-        <motion.button 
-          onClick={(e) => {
-            e.stopPropagation();
-            if (navigator.share) {
-              navigator.share({
-                title: currentExperience.title,
-                text: currentExperience.description,
-                url: window.location.href,
-              }).catch(err => console.error('Error sharing:', err));
-            } else {
-              alert('Web Share API not supported on this browser.');
-            }
-          }}
-          className="bg-white text-gray-500 hover:bg-gray-600 hover:text-white rounded-full shadow-md transition-all flex items-center justify-center w-16 h-16 md:w-20 md:h-20 relative overflow-hidden"
-          aria-label="Condividi"
-          whileHover={{ 
-            scale: 1.05,
-            boxShadow: "0 10px 15px -5px rgba(0, 0, 0, 0.1), 0 5px 5px -5px rgba(0, 0, 0, 0.04)"
-          }}
-          whileTap={{ scale: 0.9 }}
-        >
-          <motion.div 
-            className="absolute inset-0 bg-gray-100" 
-            initial={{ y: "100%" }}
-            whileHover={{ y: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 10 }}
-          />
+          <motion.button 
+            className="flex-1 text-white bg-amber-800 hover:bg-amber-900 py-3 rounded-full shadow-lg transition-all items-center justify-center font-bold relative overflow-hidden h-16 flex"
+            aria-label="Acquista"
+            whileHover={{ 
+              scale: 1.05,
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+            }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <motion.div 
+              className="absolute inset-0 bg-amber-800" 
+              initial={{ y: "100%" }}
+              whileHover={{ y: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 10 }}
+            />
+            <span className="relative z-10 text-lg">acquista</span>
+          </motion.button>
           
-          <Share2 className="relative z-10 w-5 h-5" />
-        </motion.button>
+          <motion.button 
+            onClick={() => !isTransitioning && handleButtonClick('right')}
+            className="bg-white text-green-500 hover:bg-green-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
+            aria-label="Interessante"
+            whileHover={{ 
+              scale: 1.1,
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+            }}
+            whileTap={{ scale: 0.85 }}
+            disabled={isTransitioning}
+          >
+            <motion.div 
+              className="absolute inset-0 bg-green-100" 
+              initial={{ y: "100%" }}
+              whileHover={{ y: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 10 }}
+            />
+            <ThumbsUp className="relative z-10" />
+          </motion.button>
+        </div>
       </div>
+
+      {/* Pop-up a schermo intero */}
+      <AnimatePresence>
+        {showPopup && (
+          <motion.div 
+            className="fixed inset-0 bg-white z-50 flex flex-col overflow-y-auto"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="relative w-full max-w-md mx-auto px-4 py-6 flex-1">
+              {/* Pulsante di chiusura in alto a destra */}
+              <motion.button
+                className="absolute top-4 right-4 bg-red-500 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg z-10"
+                onClick={closePopup}
+                whileHover={{ scale: 1.1, backgroundColor: "#ef4444" }}
+                whileTap={{ scale: 0.9 }}
+              >
+                <X className="w-6 h-6" />
+              </motion.button>
+              
+              <div className="mb-24">
+                <div className="relative h-64 w-full mb-6">
+                  <Image
+                    src={currentExperience.imageUrl}
+                    alt={currentExperience.title}
+                    fill
+                    style={{ objectFit: 'cover' }}
+                    className="rounded-lg select-none" 
+                  />
+                </div>
+                
+                <div className='flex items-start gap-3 mb-3'>
+                  <h2 className="text-3xl text-gray-800">€{currentExperience.price} <b>{currentExperience.title}</b></h2>
+                </div>
+                
+                <p className="text-gray-600 text-base mb-6">
+                  {currentExperience.description}
+                </p>
+                
+                {/* Pulsante Condividi a tutta larghezza dopo la descrizione */}
+                <motion.button 
+                  onClick={handleShare}
+                  className="w-full text-gray-700 bg-white border border-gray-700 py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 relative overflow-hidden mb-6"
+                  aria-label="Condividi"
+                  whileHover={{ 
+                    scale: 1.02,
+                    backgroundColor: "#d97706",
+                    color: "white",
+                    borderColor: "#d97706"
+                  }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Share2 className="relative z-10 w-5 h-5" />
+                  <span className="relative z-10 font-medium">condividi</span>
+                </motion.button>
+              </div>
+            </div>
+            
+            {/* Pulsanti in fondo al popup con larghezza uguale all'immagine */}
+            <div className="sticky bottom-0 left-0 right-0 bg-white py-4 border-t border-gray-200">
+              <div className="w-full max-w-md mx-auto px-4 flex justify-between space-x-2 items-center">
+                <motion.button 
+                  onClick={() => {
+                    closePopup();
+                    setTimeout(() => handleButtonClick('left'), 300);
+                  }}
+                  className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
+                  aria-label="Non mi interessa"
+                  whileHover={{ 
+                    scale: 1.1,
+                    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                  }}
+                  whileTap={{ scale: 0.85 }}
+                >
+                  <motion.div 
+                    className="absolute inset-0 bg-red-100" 
+                    initial={{ y: "100%" }}
+                    whileHover={{ y: 0 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 10 }}
+                  />
+                  <ThumbsDown className="relative z-10" />
+                </motion.button>
+                
+                <motion.button 
+                  className="flex-1 text-white bg-amber-800 hover:bg-amber-900 py-3 rounded-full shadow-lg transition-all items-center justify-center font-bold relative overflow-hidden h-16 flex"
+                  aria-label="Acquista"
+                  whileHover={{ 
+                    scale: 1.05,
+                    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                  }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <motion.div 
+                    className="absolute inset-0 bg-amber-800" 
+                    initial={{ y: "100%" }}
+                    whileHover={{ y: 0 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 10 }}
+                  />
+                  <span className="relative z-10 text-lg">acquista</span>
+                </motion.button>
+                
+                <motion.button 
+                  onClick={() => {
+                    closePopup();
+                    setTimeout(() => handleButtonClick('right'), 300);
+                  }}
+                  className="bg-white text-green-500 hover:bg-green-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
+                  aria-label="Interessante"
+                  whileHover={{ 
+                    scale: 1.1,
+                    boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                  }}
+                  whileTap={{ scale: 0.85 }}
+                >
+                  <motion.div 
+                    className="absolute inset-0 bg-green-100" 
+                    initial={{ y: "100%" }}
+                    whileHover={{ y: 0 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 10 }}
+                  />
+                  <ThumbsUp className="relative z-10" />
+                </motion.button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
