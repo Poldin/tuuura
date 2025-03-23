@@ -1,41 +1,163 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { experiences } from './data/experiences';
-import { Experience } from './types';
+import { Experience, UserInteraction } from './types';
 import { ThumbsUp, ThumbsDown, User, Share2, X, Telescope } from 'lucide-react';
 import HamburgerMenu from './components/hamburgermenu/hamburgermenucomponent';
+import { supabase } from '@/lib/supabase';
 
 export default function Home() {
+  const [experiences, setExperiences] = useState<Experience[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [activeButton, setActiveButton] = useState<'left' | 'right' | 'up' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   
-  const currentExperience = experiences[currentIndex];
+  // Get the current experience or show a placeholder
+  const currentExperience = experiences.length > 0 
+    ? experiences[currentIndex] 
+    : {
+        id: '',
+        uid: '',
+        title: 'Loading...',
+        description: 'Loading experience details...',
+        price: 0,
+        currency: '€',
+        imageUrl: '/placeholder.jpg',
+        producerId: '',
+      };
+
+  // Fetch experiences
+  const fetchExperiences = async (pageNum: number = 0, limit: number = 4) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/products?page=${pageNum}&limit=${limit}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch experiences');
+      }
+      
+      const data = await response.json();
+      
+      if (data.experiences && data.experiences.length > 0) {
+        if (pageNum === 0) {
+          setExperiences(data.experiences);
+        } else {
+          setExperiences(prevExperiences => [...prevExperiences, ...data.experiences]);
+        }
+        
+        setUserId(data.userId);
+        setHasMore(data.experiences.length === limit);
+      } else if (pageNum === 0) {
+        setExperiences([]);
+        setHasMore(false);
+      } else {
+        setHasMore(false);
+      }
+    } catch (err) {
+      setError('Error loading experiences. Please try again later.');
+      console.error('Error fetching experiences:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load more experiences when running low
+  useEffect(() => {
+    if (experiences.length > 0 && currentIndex >= experiences.length - 2 && hasMore) {
+      fetchExperiences(page + 1);
+      setPage(prevPage => prevPage + 1);
+    }
+  }, [currentIndex, experiences.length, hasMore, page]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchExperiences();
+  }, []);
+
+  // Get current user ID
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Check for user authentication
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserId(user?.id || null);
+    };
+    
+    checkUser();
+    
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUserId(session?.user?.id || null);
+    });
+    
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Record user interaction
+  const recordInteraction = async (interaction: UserInteraction) => {
+    try {
+      await fetch('/api/interactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...interaction,
+          userId: userId
+        }),
+      });
+    } catch (err) {
+      console.error('Error recording interaction:', err);
+    }
+  };
 
   const handleButtonClick = (buttonType: 'left' | 'right' | 'up') => {
-    if (isTransitioning) return;
+    if (isTransitioning || experiences.length === 0) return;
     
     setIsTransitioning(true);
     setActiveButton(buttonType);
     
-    // Durante l'overlay, prepariamo già l'indice per la prossima carta (invisibile all'utente)
+    // Record the interaction
+    if (buttonType === 'left') {
+      recordInteraction({
+        productId: currentExperience.id,
+        disliked: true,
+      });
+    } else if (buttonType === 'right') {
+      recordInteraction({
+        productId: currentExperience.id,
+        liked: true,
+      });
+    }
+    
+    // Prepare the next card while the overlay is visible
     setTimeout(() => {
-      // Cambiamo l'indice mentre l'overlay è ancora visibile
+      // Change the index while the overlay is still visible
       if (currentIndex < experiences.length - 1) {
         setCurrentIndex(prevIndex => prevIndex + 1);
+      } else if (hasMore) {
+        // We're waiting for more experiences to load
+        // Keep the current one until more are loaded
       } else {
+        // Cycle back to the beginning if there are no more to load
         setCurrentIndex(0);
       }
       
-      // Aspettiamo ancora un momento e poi rimuoviamo l'overlay
+      // Wait a moment and then remove the overlay
       setTimeout(() => {
         setActiveButton(null);
         
-        // Permettiamo nuove transizioni dopo che la nuova carta è completamente visibile
+        // Allow new transitions after the new card is fully visible
         setTimeout(() => {
           setIsTransitioning(false);
         }, 300);
@@ -44,6 +166,12 @@ export default function Home() {
   };
 
   const openPopup = () => {
+    // Record the click for details
+    recordInteraction({
+      productId: currentExperience.id,
+      clickedDetails: true,
+    });
+    
     setShowPopup(true);
   };
 
@@ -53,6 +181,13 @@ export default function Home() {
 
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
+    
+    // Record the share interaction
+    recordInteraction({
+      productId: currentExperience.id,
+      clickedShare: true,
+    });
+    
     if (navigator.share) {
       navigator.share({
         title: currentExperience.title,
@@ -64,9 +199,22 @@ export default function Home() {
     }
   };
 
+  const handleBuyClick = () => {
+    // Record the buy interaction
+    recordInteraction({
+      productId: currentExperience.id,
+      clickedBuy: true,
+    });
+    
+    // Redirect to checkout URL if available
+    if (currentExperience.checkoutUrl) {
+      window.open(currentExperience.checkoutUrl, '_blank');
+    }
+  };
+
   // Card component to avoid repetition
   const ExperienceCard = ({ experience, onClick }: { experience: Experience, onClick: () => void }) => {
-    // Funzione per troncare il testo a un numero specifico di caratteri
+    // Function to truncate text to a specific number of characters
     const truncateText = (text: string, maxLength: number = 120) => {
       if (text.length <= maxLength) return text;
       return text.substring(0, maxLength).trim();
@@ -92,7 +240,7 @@ export default function Home() {
 
         <div className="p-5 pb-10">
           <div className='flex items-start gap-3 mb-3'>
-            <h2 className="text-2xl text-gray-800">€{experience.price} <b>{experience.title}</b></h2>
+            <h2 className="text-2xl text-gray-800">{experience.currency}{experience.price} <b>{experience.title}</b></h2>
           </div>
 
           <p className="text-gray-600 mb-3 text-sm">
@@ -106,7 +254,7 @@ export default function Home() {
     );
   };
 
-  // SVG pattern con piccole T grigie semitrasparenti
+  // SVG pattern with small semi-transparent gray T's
   const TPattern = () => (
     <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0">
       <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" className="opacity-40">
@@ -119,6 +267,41 @@ export default function Home() {
       </svg>
     </div>
   );
+
+  // Show loading state
+  if (loading && experiences.length === 0) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-gray-100">
+        <div className="text-center">
+          <div className="animate-pulse mb-4">
+            <div className="h-8 w-32 bg-gray-300 rounded mx-auto"></div>
+          </div>
+          <p className="text-gray-600">Loading experiences...</p>
+        </div>
+      </main>
+    );
+  }
+
+  // Show error state
+  if (error && experiences.length === 0) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-gray-100">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-red-500 mb-4">Error</h2>
+          <p className="text-gray-600">{error}</p>
+          <button 
+            onClick={() => {
+              setError(null);
+              fetchExperiences();
+            }}
+            className="mt-4 bg-amber-800 text-white px-4 py-2 rounded"
+          >
+            Try Again
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-8 bg-gray-100">
@@ -139,7 +322,7 @@ export default function Home() {
       </header>
 
       <div className="relative flex flex-col justify-center items-center w-full max-w-md overflow-hidden">
-        {/* Carta principale (currentExperience) */}
+        {/* Main card (currentExperience) */}
         <div className="w-full">
           <ExperienceCard experience={currentExperience} onClick={openPopup} />
           
@@ -154,7 +337,7 @@ export default function Home() {
               <span className="relative">scopri di più</span>
             </motion.button>
             
-            {/* Pulsante Condividi accanto a Scopri di più */}
+            {/* Share button next to Discover more */}
             <motion.button 
               onClick={handleShare}
               className="bg-white text-gray-700 hover:bg-gray-700 hover:text-white rounded-lg shadow-md transition-all flex items-center justify-center px-4 py-3 gap-2 relative overflow-hidden w-full"
@@ -171,7 +354,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Overlay colorati */}
+        {/* Color overlays */}
         <AnimatePresence>
           {activeButton === 'left' && (
             <motion.div 
@@ -199,7 +382,7 @@ export default function Home() {
         </AnimatePresence>
       </div>
 
-      {/* Pulsanti in fondo alla pagina principale */}
+      {/* Buttons at the bottom of the main page */}
       <div className="absolute bottom-8 left-0 right-0 flex justify-center w-full px-4">
         <div className="w-full max-w-md flex justify-between space-x-2 items-center">
           <motion.button 
@@ -230,6 +413,7 @@ export default function Home() {
               boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
             }}
             whileTap={{ scale: 0.95 }}
+            onClick={handleBuyClick}
           >
             <motion.div 
               className="absolute inset-0 bg-amber-800" 
@@ -262,7 +446,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Pop-up a schermo intero */}
+      {/* Full-screen popup */}
       <AnimatePresence>
         {showPopup && (
           <motion.div 
@@ -273,7 +457,7 @@ export default function Home() {
             transition={{ duration: 0.3 }}
           >
             <div className="relative w-full max-w-md mx-auto px-4 py-6 flex-1">
-              {/* Pulsante di chiusura in alto a destra */}
+              {/* Close button in the top right */}
               <motion.button
                 className="absolute top-4 right-4 bg-red-500 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg z-10"
                 onClick={closePopup}
@@ -295,14 +479,14 @@ export default function Home() {
                 </div>
                 
                 <div className='flex items-start gap-3 mb-3'>
-                  <h2 className="text-3xl text-gray-800">€{currentExperience.price} <b>{currentExperience.title}</b></h2>
+                  <h2 className="text-3xl text-gray-800">{currentExperience.currency}{currentExperience.price} <b>{currentExperience.title}</b></h2>
                 </div>
                 
                 <p className="text-gray-600 text-base mb-6">
                   {currentExperience.description}
                 </p>
                 
-                {/* Pulsante Condividi a tutta larghezza dopo la descrizione */}
+                {/* Full-width Share button after the description */}
                 <motion.button 
                   onClick={handleShare}
                   className="w-full text-gray-700 bg-white border border-gray-700 py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 relative overflow-hidden mb-6"
@@ -321,7 +505,7 @@ export default function Home() {
               </div>
             </div>
             
-            {/* Pulsanti in fondo al popup con larghezza uguale all'immagine */}
+            {/* Buttons at the bottom of the popup with same width as the image */}
             <div className="sticky bottom-0 left-0 right-0 bg-white py-4 border-t border-gray-200">
               <div className="w-full max-w-md mx-auto px-4 flex justify-between space-x-2 items-center">
                 <motion.button 
@@ -354,6 +538,7 @@ export default function Home() {
                     boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
                   }}
                   whileTap={{ scale: 0.95 }}
+                  onClick={handleBuyClick}
                 >
                   <motion.div 
                     className="absolute inset-0 bg-amber-800" 
