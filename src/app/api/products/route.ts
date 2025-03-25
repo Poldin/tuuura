@@ -44,12 +44,11 @@ export async function GET(request: Request) {
   const supabaseAdmin = createAdminClient();
   const { searchParams } = new URL(request.url);
   const limit = parseInt(searchParams.get('limit') || '4', 10);
-  const page = parseInt(searchParams.get('page') || '0', 10);
-  const offset = page * limit;
+  const excludeIds = searchParams.get('exclude')?.split(',') || [];
   
   try {
-    // Fetch products with join to producers for producer name
-    const { data: products, error } = await supabaseAdmin
+    // Build the query
+    let query = supabaseAdmin
       .from('products')
       .select(`
         id, 
@@ -59,8 +58,18 @@ export async function GET(request: Request) {
         producer_id,
         producers:producer_id (name)
       `)
-      .range(offset, offset + limit - 1)
       .order('created_at', { ascending: false });
+
+    // Add exclude filter if there are IDs to exclude
+    if (excludeIds.length > 0) {
+      query = query.not('id', 'in', `(${excludeIds.join(',')})`);
+    }
+
+    // Add limit
+    query = query.limit(limit);
+    
+    // Execute the query
+    const { data: products, error } = await query;
     
     if (error) {
       throw error;

@@ -5,10 +5,26 @@ export async function POST(request: Request) {
   const supabaseAdmin = createAdminClient();
   try {
     const body = await request.json();
-    const { productId, userId, liked, disliked, clickedBuy, clickedDetails, clickedShare } = body;
+    const { productId, userId, action } = body;
     
-    if (!productId) {
-      return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
+    if (!productId || !action) {
+      return NextResponse.json({ error: 'Product ID and action are required' }, { status: 400 });
+    }
+    
+    // Map the interaction type to a descriptive action
+    let actionDescription = '';
+    if (action === 'User liked the product') {
+      actionDescription = 'LIKE';
+    } else if (action === 'User disliked the product') {
+      actionDescription = 'DISLIKE';
+    } else if (action === 'User viewed product details') {
+      actionDescription = 'VIEW_DETAILS';
+    } else if (action === 'User shared the product') {
+      actionDescription = 'SHARE';
+    } else if (action === 'User clicked buy button') {
+      actionDescription = 'CLICK_BUY';
+    } else {
+      actionDescription = action.toUpperCase();
     }
     
     // Collect anonymous data like IP, user agent, etc.
@@ -25,11 +41,7 @@ export async function POST(request: Request) {
       .insert({
         user_id: userId || null,
         product_id: productId,
-        liked: liked || null,
-        disliked: disliked || null,
-        clicked_buy: clickedBuy || false,
-        clicked_details: clickedDetails || false,
-        clicked_share: clickedShare || false,
+        action: actionDescription,
         anonymous_data: userId ? null : anonymousData,
       });
     
