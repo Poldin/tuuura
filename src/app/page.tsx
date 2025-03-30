@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Experience, UserInteraction } from './types';
-import { ThumbsUp, ThumbsDown, User, Share2, X, Telescope, ChevronRight } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Share, X, ShoppingBasket, Maximize2 } from 'lucide-react';
 import HamburgerMenu from './components/hamburgermenu/hamburgermenucomponent';
 import { supabase } from '@/lib/supabase';
 
@@ -13,11 +13,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [activeButton, setActiveButton] = useState<'left' | 'right' | 'next' | null>(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [showBuyLabel, setShowBuyLabel] = useState(false);
   const cardsContainerRef = useRef<HTMLDivElement>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [seenProductIds, setSeenProductIds] = useState<string[]>([]);
@@ -42,50 +41,63 @@ export default function Home() {
 
     const container = cardsContainerRef.current;
     const handleScrollUpdate = () => {
-      const scrollLeft = container.scrollLeft;
-      const cardWidth = container.clientWidth;
-      const newIndex = Math.round(scrollLeft / cardWidth);
+      const scrollTop = container.scrollTop;
+      const viewportHeight = container.clientHeight;
+      const newIndex = Math.round(scrollTop / viewportHeight);
       
       if (newIndex !== currentIndex) {
         setCurrentIndex(newIndex);
+        setShowBuyLabel(false); // Reset the label visibility when changing cards
+        // Load more content if we're near the end
+        if (newIndex >= experiences.length - 1 && hasMore && !isLoadingMore) {
+          loadNextExperience();
+        }
       }
     };
 
     container.addEventListener('scroll', handleScrollUpdate);
     return () => container.removeEventListener('scroll', handleScrollUpdate);
-  }, [currentIndex]);
+  }, [currentIndex, experiences.length, hasMore, isLoadingMore]);
 
-  // Initial data fetch - fetch only one product
+  // Add effect to show buy label after 5 seconds
   useEffect(() => {
-    const fetchInitialExperience = async () => {
+    const timer = setTimeout(() => {
+      setShowBuyLabel(true);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [currentIndex]); // Reset timer when currentIndex changes
+
+  // Initial data fetch - fetch multiple products
+  useEffect(() => {
+    const fetchInitialExperiences = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/products?limit=1');
+        const response = await fetch('/api/products?limit=5');
         
         if (!response.ok) {
-          throw new Error('Failed to fetch experience');
+          throw new Error('Failed to fetch experiences');
         }
         
         const data = await response.json();
         
         if (data.experiences && data.experiences.length > 0) {
-          const newExperience = data.experiences[0];
-          setExperiences([newExperience]);
-          setSeenProductIds([newExperience.id]);
+          setExperiences(data.experiences);
+          setSeenProductIds(data.experiences.map((exp: Experience) => exp.id));
           setHasMore(true);
         } else {
           setExperiences([]);
           setHasMore(false);
         }
       } catch (err) {
-        console.error('Error fetching initial experience:', err);
-        setError('Error loading experience. Please try again later.');
+        console.error('Error fetching initial experiences:', err);
+        setError('Error loading experiences. Please try again later.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchInitialExperience();
+    fetchInitialExperiences();
   }, []);
 
   // Load next experience
@@ -104,10 +116,9 @@ export default function Home() {
       
       if (data.experiences && data.experiences.length > 0) {
         const newExperience = data.experiences[0];
-        setExperiences([newExperience]); // Replace current experience with new one
+        setExperiences(prev => [...prev, newExperience]);
         setSeenProductIds(prevIds => [...prevIds, newExperience.id]);
         setHasMore(true);
-        setCurrentIndex(0); // Reset to first position
       } else {
         setHasMore(false);
       }
@@ -156,49 +167,24 @@ export default function Home() {
     }
   };
 
-  const handleButtonClick = (buttonType: 'left' | 'right' | 'next') => {
-    if (isTransitioning || experiences.length === 0) return;
+  // Remove the handleButtonClick function since we don't need it anymore
+  const handleInteraction = (type: 'like' | 'dislike' | 'share' | 'buy') => {
+    if (experiences.length === 0) return;
     
-    setIsTransitioning(true);
-    setActiveButton(buttonType);
-    
-    // Record the interaction with appropriate action description
-    if (buttonType === 'left') {
-      recordInteraction({
-        productId: currentExperience.id,
-        disliked: true,
-        action: 'User disliked the product'
-      });
-    } else if (buttonType === 'right') {
-      recordInteraction({
-        productId: currentExperience.id,
-        liked: true,
-        action: 'User liked the product'
-      });
-    }
-    
-    // Load next experience if available
-    if (hasMore) {
-      loadNextExperience().then(() => {
-        setActiveButton(null);
-        setIsTransitioning(false);
-      });
-    } else {
-      setCurrentIndex(0);
-      setActiveButton(null);
-      setIsTransitioning(false);
-    }
-  };
-
-  const openPopup = () => {
-    // Record the click for details
+    // Record the interaction
     recordInteraction({
       productId: currentExperience.id,
-      clickedDetails: true,
-      action: 'User viewed product details'
+      ...(type === 'like' && { liked: true }),
+      ...(type === 'dislike' && { disliked: true }),
+      ...(type === 'share' && { clickedShare: true }),
+      ...(type === 'buy' && { clickedBuy: true }),
+      action: `User ${type}d the product`
     });
-    
-    setShowPopup(true);
+
+    // Handle buy action
+    if (type === 'buy' && currentExperience.checkoutUrl) {
+      window.open(currentExperience.checkoutUrl, '_blank');
+    }
   };
 
   const closePopup = () => {
@@ -238,80 +224,6 @@ export default function Home() {
     if (currentExperience.checkoutUrl) {
       window.open(currentExperience.checkoutUrl, '_blank');
     }
-  };
-
-  // Card component to avoid repetition
-  const ExperienceCard = ({ experience, onClick }: { experience: Experience, onClick: () => void }) => {
-    // Function to truncate text to a specific number of characters
-    const truncateText = (text: string, maxLength: number = 120) => {
-      if (text.length <= maxLength) return text;
-      return text.substring(0, maxLength).trim();
-    };
-
-    const truncatedDescription = truncateText(experience.description);
-    const needsTruncation = experience.description.length > truncatedDescription.length;
-
-    return (
-      <motion.div 
-        className="relative bg-white rounded-xl overflow-hidden shadow-xl h-[60vh] w-full cursor-pointer"
-        onClick={onClick}
-        initial={{ opacity: 0 }}
-        animate={{ 
-          opacity: 1,
-          transition: { duration: 0.2 }
-        }}
-        exit={{ 
-          opacity: 0,
-          transition: { duration: 0.2 }
-        }}
-      >
-        {/* Overlay for interaction feedback */}
-        <AnimatePresence>
-          {activeButton && (
-            <motion.div
-              className="absolute inset-0 z-20 flex items-center justify-center"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className={`w-full h-full flex items-center justify-center ${
-                activeButton === 'left' ? 'bg-red-500' :
-                activeButton === 'right' ? 'bg-green-500' :
-                'bg-gray-500'
-              }`}>
-                {activeButton === 'left' && <ThumbsDown className="w-24 h-24 text-white" />}
-                {activeButton === 'right' && <ThumbsUp className="w-24 h-24 text-white" />}
-                {activeButton === 'next' && <ChevronRight className="w-24 h-24 text-white" />}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <div className="relative h-3/5 w-full">
-          <Image
-            src={experience.imageUrl}
-            alt={experience.title}
-            fill
-            style={{ objectFit: 'cover' }}
-            className="select-none" 
-          />
-        </div>
-
-        <div className="p-5 pb-10">
-          <div className='flex items-start gap-3 mb-3'>
-            <h2 className="text-2xl text-gray-800">{experience.currency}{experience.price} <b>{experience.title}</b></h2>
-          </div>
-
-          <p className="text-gray-600 mb-3 text-sm">
-            {truncatedDescription}
-            {needsTruncation && (
-              <span className="text-gray-700 font-medium"> ...<u>clicca per scoprire di più</u></span>
-            )}
-          </p>
-        </div>
-      </motion.div>
-    );
   };
 
   // SVG pattern with small semi-transparent gray T's
@@ -364,158 +276,114 @@ export default function Home() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center p-4 md:p-8 bg-gray-100 overflow-hidden">
+    <main className="flex min-h-screen flex-col items-center bg-gray-100 overflow-hidden">
       <TPattern />
-      <header className="w-full max-w-md mb-4 flex justify-between items-center">
-        <motion.button
-          className="p-2 rounded-full bg-white shadow-md"
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.95 }}
-          aria-label="Login"
-        >
-          <User className="w-6 h-6 text-gray-700" />
-        </motion.button>
-        
-        <h1 className="text-3xl font-bold text-center text-amber-800">Tuuura</h1>
-        
+      <header className="fixed top-0 left-0 right-6 z-50 bg-transparent w-full max-w-md mx-auto px-4 py-4 flex justify-end items-center">
         <HamburgerMenu />
       </header>
 
-      <div className="relative w-full max-w-md">
-        {/* Cards container with horizontal scroll */}
-        <div 
-          ref={cardsContainerRef}
-          className="flex overflow-x-hidden gap-4 pb-4 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
-        >
-          <AnimatePresence mode="wait">
-            {experiences.map((experience) => (
-              <div 
-                key={experience.id}
-                className="flex-none w-full snap-center"
-              >
-                <ExperienceCard experience={experience} onClick={openPopup} />
+      <div 
+        ref={cardsContainerRef}
+        className="relative w-full max-w-md h-screen overflow-y-auto snap-y snap-mandatory pt-16"
+      >
+        <AnimatePresence mode="wait">
+          {experiences.map((experience) => (
+            <div 
+              key={experience.id}
+              className="h-screen snap-start relative flex flex-col"
+            >
+              <div className="relative h-full w-full">
+                <Image
+                  src={experience.imageUrl}
+                  alt={experience.title}
+                  fill
+                  style={{ objectFit: 'cover' }}
+                  className="select-none" 
+                />
                 
-                <div className="mt-4 w-full flex gap-2">
-                  <motion.button
-                    onClick={openPopup}
-                    className="text-amber-700 bg-white py-3 px-6 rounded-lg shadow-md text-center hover:text-white flex items-center justify-center gap-2 relative overflow-hidden w-full"
-                    whileHover={{ scale: 1.02, backgroundColor: "#d97706" }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Telescope className="relative w-4 h-4" />
-                    <span className="relative">scopri di più</span>
-                  </motion.button>
-                  
+                {/* Vertical buttons on the right */}
+                <div className="absolute right-4 bottom-4 flex flex-col gap-4 items-end justify-center z-10">
                   <motion.button 
-                    onClick={handleShare}
-                    className="bg-white text-gray-700 hover:bg-gray-700 hover:text-white rounded-lg shadow-md transition-all flex items-center justify-center px-4 py-3 gap-2 relative overflow-hidden w-full"
+                    onClick={() => handleInteraction('share')}
+                    className="bg-white backdrop-blur-sm text-gray-700 rounded-full w-10 h-10 flex items-center justify-center shadow-lg"
                     aria-label="Condividi"
                     whileHover={{ 
-                      scale: 1.02,
-                      boxShadow: "0 10px 15px -5px rgba(0, 0, 0, 0.1), 0 5px 5px -5px rgba(0, 0, 0, 0.04)"
+                      scale: 1.1,
+                      backgroundColor: "rgba(255, 255, 255, 0.9)"
                     }}
-                    whileTap={{ scale: 0.98 }}
+                    whileTap={{ scale: 0.9 }}
                   >
-                    <Share2 className="relative w-4 h-4" />
-                    <span className="relative">condividi</span>
+                    <Share className="w-5 h-5" />
+                  </motion.button>
+
+                  <motion.button 
+                    onClick={() => handleInteraction('dislike')}
+                    className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg"
+                    aria-label="Non mi interessa"
+                    whileHover={{ 
+                      scale: 1.1,
+                      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                    }}
+                    whileTap={{ scale: 0.85 }}
+                  >
+                    <ThumbsDown className="w-5 h-5" />
+                  </motion.button>
+
+                  <motion.button 
+                    onClick={() => handleInteraction('like')}
+                    className="bg-white text-green-500 hover:bg-green-500 hover:text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg"
+                    aria-label="Interessante"
+                    whileHover={{ 
+                      scale: 1.1,
+                      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                    }}
+                    whileTap={{ scale: 0.85 }}
+                  >
+                    <ThumbsUp className="w-5 h-5" />
+                  </motion.button>
+
+                  <motion.button 
+                    onClick={() => handleInteraction('buy')}
+                    className="bg-amber-800 text-white hover:bg-amber-900 rounded-lg shadow-lg px-4 py-2 flex items-center gap-2"
+                    aria-label="Acquista"
+                    whileHover={{ 
+                      scale: 1.1,
+                      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                    }}
+                    whileTap={{ scale: 0.85 }}
+                  >
+                    {showBuyLabel && <span className="font-medium">acquista</span>}
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                    >
+                      <ShoppingBasket className="w-6 h-6" />
+                    </motion.div>
                   </motion.button>
                 </div>
               </div>
-            ))}
-          </AnimatePresence>
-          
-          {/* Loading indicator */}
-          {(isLoadingMore || loading) && (
-            <div className="flex-none w-full snap-center flex items-center justify-center">
-              <div className="animate-pulse">
-                <div className="h-8 w-32 bg-gray-300 rounded"></div>
+
+              {/* Bottom content overlay */}
+              <div className="absolute bottom-0 left-0 right-0 p-4">
+                <div className="text-white">
+                <button className="bg-white text-gray-800 hover:bg-gray-200 rounded-lg px-3 py-1 flex items-center mb-2">
+                      <Maximize2 className='w-4 h-4 mr-2 text-gray-800/60'/> <span className="font-bold text-2xl">{experience.title}</span>
+                    </button>  
+                    <span className="text-lg bg-white text-gray-800 rounded-lg px-3 py-1">{experience.currency}{experience.price}</span>
+                </div>
               </div>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Buttons at the bottom of the main page */}
-      <div className="absolute bottom-8 left-0 right-0 flex justify-center w-full px-4">
-        <div className="w-full max-w-md flex justify-between space-x-2 items-center">
-          <motion.button 
-            onClick={() => !isTransitioning && handleButtonClick('left')}
-            className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
-            aria-label="Non mi interessa"
-            whileHover={{ 
-              scale: 1.1,
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-            }}
-            whileTap={{ scale: 0.85 }}
-            disabled={isTransitioning}
-          >
-            <motion.div 
-              className="absolute inset-0 bg-red-100" 
-              initial={{ y: "100%" }}
-              whileHover={{ y: 0 }}
-              transition={{ type: "spring", stiffness: 400, damping: 10 }}
-            />
-            <ThumbsDown className="relative z-10" />
-          </motion.button>
-          
-          <motion.button 
-            className="flex-1 text-white bg-amber-800 hover:bg-amber-900 py-3 rounded-full shadow-lg transition-all items-center justify-center font-bold relative overflow-hidden h-16 flex"
-            aria-label="Acquista"
-            whileHover={{ 
-              scale: 1.05,
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-            }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleBuyClick}
-          >
-            <motion.div 
-              className="absolute inset-0 bg-amber-800" 
-              initial={{ y: "100%" }}
-              whileHover={{ y: 0 }}
-              transition={{ type: "spring", stiffness: 400, damping: 10 }}
-            />
-            <span className="relative z-10 text-lg">acquista</span>
-          </motion.button>
-          
-          <motion.button 
-            onClick={() => !isTransitioning && handleButtonClick('right')}
-            className="bg-white text-green-500 hover:bg-green-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
-            aria-label="Interessante"
-            whileHover={{ 
-              scale: 1.1,
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-            }}
-            whileTap={{ scale: 0.85 }}
-            disabled={isTransitioning}
-          >
-            <motion.div 
-              className="absolute inset-0 bg-green-100" 
-              initial={{ y: "100%" }}
-              whileHover={{ y: 0 }}
-              transition={{ type: "spring", stiffness: 400, damping: 10 }}
-            />
-            <ThumbsUp className="relative z-10" />
-          </motion.button>
-
-          <motion.button 
-            onClick={() => !isTransitioning && handleButtonClick('next')}
-            className="bg-white text-gray-700 hover:bg-gray-700 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
-            whileHover={{ 
-              scale: 1.1,
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-            }}
-            whileTap={{ scale: 0.85 }}
-            disabled={isLoadingMore || loading}
-          >
-            <motion.div 
-              className="absolute inset-0 bg-gray-100" 
-              initial={{ y: "100%" }}
-              whileHover={{ y: 0 }}
-              transition={{ type: "spring", stiffness: 400, damping: 10 }}
-            />
-            <ChevronRight className="relative z-10" />
-          </motion.button>
-        </div>
+          ))}
+        </AnimatePresence>
+        
+        {/* Loading indicator */}
+        {(isLoadingMore || loading) && (
+          <div className="h-screen snap-start flex items-center justify-center">
+            <div className="animate-pulse">
+              <div className="h-8 w-32 bg-gray-300 rounded"></div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Full-screen popup */}
@@ -561,7 +429,7 @@ export default function Home() {
                 {/* Full-width Share button after the description */}
                 <motion.button 
                   onClick={handleShare}
-                  className="w-full text-gray-700 bg-white border border-gray-700 py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 relative overflow-hidden mb-6"
+                  className="w-full text-gray-700 bg-white py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 relative overflow-hidden mb-6"
                   aria-label="Condividi"
                   whileHover={{ 
                     scale: 1.02,
@@ -571,7 +439,7 @@ export default function Home() {
                   }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <Share2 className="relative z-10 w-5 h-5" />
+                  <Share className="relative z-10 w-5 h-5" />
                   <span className="relative z-10 font-medium">condividi</span>
                 </motion.button>
               </div>
@@ -583,7 +451,7 @@ export default function Home() {
                 <motion.button 
                   onClick={() => {
                     closePopup();
-                    setTimeout(() => handleButtonClick('left'), 300);
+                    setTimeout(() => handleInteraction('dislike'), 300);
                   }}
                   className="bg-white text-red-500 hover:bg-red-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
                   aria-label="Non mi interessa"
@@ -624,7 +492,7 @@ export default function Home() {
                 <motion.button 
                   onClick={() => {
                     closePopup();
-                    setTimeout(() => handleButtonClick('right'), 300);
+                    setTimeout(() => handleInteraction('like'), 300);
                   }}
                   className="bg-white text-green-500 hover:bg-green-500 hover:text-white rounded-full shadow-lg transition-all flex items-center justify-center w-16 h-16 relative overflow-hidden"
                   aria-label="Interessante"
