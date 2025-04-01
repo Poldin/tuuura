@@ -1,14 +1,28 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Experience, UserInteraction } from './types';
-import { ThumbsUp, ThumbsDown, Share, X, ShoppingBasket, Maximize2 } from 'lucide-react';
+import { Experience } from './types';
+import { ThumbsUp, ThumbsDown, Share, X, ShoppingBasket } from 'lucide-react';
 import HamburgerMenu from './components/hamburgermenu/hamburgermenucomponent';
-import { supabase } from '@/lib/supabase';
+import { useSearchParams, useRouter } from 'next/navigation';
 
-export default function Home() {
+const BATCH_SIZE = 2; // Number of items to load at once
+
+// Loading component to display while the main content is loading
+function HomeLoading() {
+  return (
+    <div className="h-screen w-full flex items-center justify-center bg-black">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+    </div>
+  );
+}
+
+// Home component that uses useSearchParams
+function HomeContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [experiences, setExperiences] = useState<Experience[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,9 +32,64 @@ export default function Home() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [showBuyLabel, setShowBuyLabel] = useState(false);
   const cardsContainerRef = useRef<HTMLDivElement>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [seenProductIds, setSeenProductIds] = useState<string[]>([]);
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const loadedIdsRef = useRef<Set<string>>(new Set());
   
+  // Function to update URL with product uid
+  const updateUrlWithProduct = useCallback((uid: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('p', uid);
+    router.push(`?${params.toString()}`, { scroll: false });
+  }, [searchParams, router]);
+
+  // Load next experiences
+  const loadNextExperiences = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const loadedIds = Array.from(loadedIdsRef.current);
+      const productUid = searchParams.get('p');
+      
+      console.log('Fetching next experiences:', {
+        currentlyLoaded: loadedIds,
+        experiencesCount: experiences.length,
+        productUid
+      });
+      
+      const response = await fetch(
+        `/api/products?limit=${BATCH_SIZE}${loadedIds.length > 0 ? `&loadedIds=${loadedIds.join(',')}` : ''}${productUid ? `&p=${productUid}` : ''}`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch experiences');
+      }
+      
+      const data = await response.json();
+      console.log('Received data:', data);
+      
+      if (data.experiences && data.experiences.length > 0) {
+        // Add new experiences to state
+        setExperiences(prev => [...prev, ...data.experiences]);
+        
+        // Add new IDs to our ref
+        data.experiences.forEach((exp: Experience) => {
+          loadedIdsRef.current.add(exp.id);
+        });
+        
+        setHasMore(data.hasMore);
+      } else {
+        console.log('No more experiences available');
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error('Error loading next experiences:', err);
+      setError('Error loading next experiences. Please try again later.');
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [experiences.length, hasMore, isLoadingMore, searchParams]);
+
   // Get the current experience or show a placeholder
   const currentExperience = experiences.length > 0 
     ? experiences[currentIndex] 
@@ -45,19 +114,48 @@ export default function Home() {
       const viewportHeight = container.clientHeight;
       const newIndex = Math.round(scrollTop / viewportHeight);
       
-      if (newIndex !== currentIndex) {
+      // Determine scroll direction
+      const isGoingUp = scrollTop < scrollPosition;
+      
+      setScrollPosition(scrollTop);
+      
+      if (newIndex !== currentIndex && experiences[newIndex]) {
         setCurrentIndex(newIndex);
         setShowBuyLabel(false); // Reset the label visibility when changing cards
-        // Load more content if we're near the end
-        if (newIndex >= experiences.length - 1 && hasMore && !isLoadingMore) {
-          loadNextExperience();
+        
+        // Update URL with the current product's uid
+        updateUrlWithProduct(experiences[newIndex].uid);
+        
+        // Check if we need to load more products
+        const isNearEnd = newIndex >= experiences.length - 2;
+        const isLastProduct = newIndex === experiences.length - 1;
+        
+        // Load more content only if:
+        // 1. We're scrolling down
+        // 2. We're at the last product or second-to-last product
+        // 3. There are more products to load
+        // 4. We're not already loading
+        if (!isGoingUp && 
+            (isNearEnd || isLastProduct) && 
+            hasMore && 
+            !isLoadingMore) {
+          console.log('Scrolling down, loading more products. Current state:', {
+            newIndex,
+            experiencesLength: experiences.length,
+            isLastProduct,
+            isNearEnd,
+            hasMore,
+            isLoadingMore,
+            loadedIds: Array.from(loadedIdsRef.current)
+          });
+          loadNextExperiences();
         }
       }
     };
 
     container.addEventListener('scroll', handleScrollUpdate);
     return () => container.removeEventListener('scroll', handleScrollUpdate);
-  }, [currentIndex, experiences.length, hasMore, isLoadingMore]);
+  }, [currentIndex, experiences, hasMore, isLoadingMore, scrollPosition, loadNextExperiences, updateUrlWithProduct]);
 
   // Add effect to show buy label after 5 seconds
   useEffect(() => {
@@ -68,23 +166,39 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [currentIndex]); // Reset timer when currentIndex changes
 
-  // Initial data fetch - fetch multiple products
+  // Initial data fetch - fetch first batch of products
   useEffect(() => {
     const fetchInitialExperiences = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/products?limit=5');
+        const productUid = searchParams.get('p');
+        const response = await fetch(`/api/products?limit=${BATCH_SIZE}${productUid ? `&p=${productUid}` : ''}`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch experiences');
         }
         
         const data = await response.json();
+        console.log('Initial data received:', data);
         
         if (data.experiences && data.experiences.length > 0) {
           setExperiences(data.experiences);
-          setSeenProductIds(data.experiences.map((exp: Experience) => exp.id));
-          setHasMore(true);
+          // Add initial IDs to our ref
+          data.experiences.forEach((exp: Experience) => {
+            loadedIdsRef.current.add(exp.id);
+          });
+          setHasMore(data.hasMore);
+          
+          // If we have a specific product uid and it's not in the first batch,
+          // we need to find its index and scroll to it
+          if (productUid) {
+            const productIndex = data.experiences.findIndex((exp: Experience) => exp.uid === productUid);
+            if (productIndex !== -1) {
+              setCurrentIndex(productIndex);
+              // Update URL with the found product's uid
+              updateUrlWithProduct(data.experiences[productIndex].uid);
+            }
+          }
         } else {
           setExperiences([]);
           setHasMore(false);
@@ -98,89 +212,11 @@ export default function Home() {
     };
 
     fetchInitialExperiences();
-  }, []);
+  }, [searchParams, updateUrlWithProduct]);
 
-  // Load next experience
-  const loadNextExperience = async () => {
-    if (isLoadingMore || !hasMore) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const response = await fetch(`/api/products?limit=1&exclude=${seenProductIds.join(',')}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch experience');
-      }
-      
-      const data = await response.json();
-      
-      if (data.experiences && data.experiences.length > 0) {
-        const newExperience = data.experiences[0];
-        setExperiences(prev => [...prev, newExperience]);
-        setSeenProductIds(prevIds => [...prevIds, newExperience.id]);
-        setHasMore(true);
-      } else {
-        setHasMore(false);
-      }
-    } catch (err) {
-      console.error('Error loading next experience:', err);
-      setError('Error loading next experience. Please try again later.');
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  // Check for user authentication
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserId(user?.id || null);
-    };
-    
-    checkUser();
-    
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setUserId(session?.user?.id || null);
-    });
-    
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Record user interaction
-  const recordInteraction = async (interaction: UserInteraction & { action: string }) => {
-    try {
-      await fetch('/api/interactions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...interaction,
-          userId: userId
-        }),
-      });
-    } catch (err) {
-      console.error('Error recording interaction:', err);
-    }
-  };
-
-  // Remove the handleButtonClick function since we don't need it anymore
   const handleInteraction = (type: 'like' | 'dislike' | 'share' | 'buy') => {
     if (experiences.length === 0) return;
     
-    // Record the interaction
-    recordInteraction({
-      productId: currentExperience.id,
-      ...(type === 'like' && { liked: true }),
-      ...(type === 'dislike' && { disliked: true }),
-      ...(type === 'share' && { clickedShare: true }),
-      ...(type === 'buy' && { clickedBuy: true }),
-      action: `User ${type}d the product`
-    });
-
     // Handle buy action
     if (type === 'buy' && currentExperience.checkoutUrl) {
       window.open(currentExperience.checkoutUrl, '_blank');
@@ -194,13 +230,6 @@ export default function Home() {
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // Record the share interaction
-    recordInteraction({
-      productId: currentExperience.id,
-      clickedShare: true,
-      action: 'User shared the product'
-    });
-    
     if (navigator.share) {
       navigator.share({
         title: currentExperience.title,
@@ -213,13 +242,6 @@ export default function Home() {
   };
 
   const handleBuyClick = () => {
-    // Record the buy interaction
-    recordInteraction({
-      productId: currentExperience.id,
-      clickedBuy: true,
-      action: 'User clicked buy button'
-    });
-    
     // Redirect to checkout URL if available
     if (currentExperience.checkoutUrl) {
       window.open(currentExperience.checkoutUrl, '_blank');
@@ -240,6 +262,9 @@ export default function Home() {
     </div>
   );
 
+  // For debugging - log loaded IDs on every render
+  console.log('Loaded IDs:', Array.from(loadedIdsRef.current));
+  
   // Show loading state
   if (loading && experiences.length === 0) {
     return (
@@ -264,7 +289,7 @@ export default function Home() {
           <button 
             onClick={() => {
               setError(null);
-              loadNextExperience();
+              loadNextExperiences();
             }}
             className="mt-4 bg-amber-800 text-white px-4 py-2 rounded"
           >
@@ -284,12 +309,12 @@ export default function Home() {
 
       <div 
         ref={cardsContainerRef}
-        className="relative w-full max-w-md h-screen overflow-y-auto snap-y snap-mandatory pt-16"
+        className="relative w-full max-w-md h-screen overflow-y-auto snap-y snap-mandatory pt-16 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
       >
         <AnimatePresence mode="wait">
-          {experiences.map((experience) => (
+          {experiences.map((experience, index) => (
             <div 
-              key={experience.id}
+              key={`${experience.id}-${index}`}
               className="h-screen snap-start relative flex flex-col"
             >
               <div className="relative h-full w-full">
@@ -365,13 +390,54 @@ export default function Home() {
 
               {/* Bottom content overlay */}
               <div className="absolute bottom-0 left-0 right-0 p-4">
-                <div className="text-white">
-                <button className="bg-white text-gray-800 hover:bg-gray-200 rounded-lg px-3 py-1 flex items-center mb-2">
-                      <Maximize2 className='w-4 h-4 mr-2 text-gray-800/60'/> <span className="font-bold text-2xl">{experience.title}</span>
-                    </button>  
-                    <span className="text-lg bg-white text-gray-800 rounded-lg px-3 py-1">{experience.currency}{experience.price}</span>
+                <div className="flex flex-col items-start gap-2">
+                  <div 
+                    onClick={() => setShowPopup(true)}
+                    className="bg-white text-gray-800 rounded-lg px-2 font-bold text-2xl max-w-fit cursor-pointer hover:bg-gray-100 transition-colors"
+                  >
+                    {experience.title}
+                  </div>  
+                  <span 
+                    onClick={() => setShowPopup(true)}
+                    className="text-lg bg-white text-gray-800 rounded-lg px-3 py-1 cursor-pointer hover:bg-gray-100 transition-colors"
+                  >
+                    {experience.currency}{experience.price}
+                  </span>
                 </div>
               </div>
+
+              {/* Description Dialog */}
+              <AnimatePresence>
+                {showPopup && (
+                  <>
+                    <motion.div 
+                      className="fixed inset-0 bg-black/50 z-40"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setShowPopup(false)}
+                    />
+                    <motion.div 
+                      className="fixed bottom-0 left-0 right-0 bg-white z-50 rounded-t-2xl p-6 md:max-w-md md:mx-auto"
+                      initial={{ y: "100%" }}
+                      animate={{ y: 0 }}
+                      exit={{ y: "100%" }}
+                      transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                    >
+                      <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6" />
+                      <div className="flex items-start gap-3 mb-4">
+                        <div>
+                          <h2 className="text-2xl font-bold text-gray-800 mb-1">{experience.title}</h2>
+                          <p className="text-xl text-amber-800 font-semibold">{experience.currency}{experience.price}</p>
+                        </div>
+                      </div>
+                      <p className="text-gray-600 text-base">
+                        {experience.description}
+                      </p>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           ))}
         </AnimatePresence>
@@ -516,5 +582,14 @@ export default function Home() {
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+// Main component with Suspense boundary
+export default function Home() {
+  return (
+    <Suspense fallback={<HomeLoading />}>
+      <HomeContent />
+    </Suspense>
   );
 }
