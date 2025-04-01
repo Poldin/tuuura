@@ -23,8 +23,10 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
   const [isLoading, setIsLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
   const [scrollLocked, setScrollLocked] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Funzione per ottenere tutti gli UID dei prodotti
   const fetchAllProductUids = async () => {
@@ -107,9 +109,232 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
     window.history.replaceState({}, '', `/sh/${uid}`);
   };
 
-  // Carica il prodotto dall'indice e aggiorna lo stato
+  // Gestisce lo scroll wheel
+  const handleWheel = (e: WheelEvent) => {
+    if (scrollLocked || isNavigating) {
+      return;
+    }
+    
+    // Verifica se possiamo prevenire lo scroll predefinito
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+    
+    // Impostazioni per lo scroll
+    const scrollSpeed = 1.2; // Velocità dello scroll
+    const maxScroll = 300; // Distanza massima di scroll prima del cambio prodotto
+    const scrollDecay = 0.92; // Valore per il decadimento naturale dello scroll
+    
+    // Applica lo scroll
+    const newScrollY = scrollY + e.deltaY * scrollSpeed;
+    
+    // Se lo scroll supera la soglia, naviga al prossimo/precedente prodotto
+    if (newScrollY < -maxScroll && currentIndex > 0) {
+      setScrollLocked(true);
+      
+      
+      // Aggiungi un po' di ritardo per rendere l'animazione più naturale
+      setTimeout(() => {
+        handlePrevious();
+      }, 100);
+      return;
+    } else if (newScrollY > maxScroll && currentIndex < rotationList.length - 1) {
+      setScrollLocked(true);
+      
+      
+      setTimeout(() => {
+        handleNext();
+      }, 100);
+      return;
+    }
+    
+    // Limita lo scroll se siamo al primo o all'ultimo prodotto
+    // per creare un effetto "elastico"
+    let finalScrollY = newScrollY;
+    if ((currentIndex === 0 && newScrollY < 0) || 
+        (currentIndex === rotationList.length - 1 && newScrollY > 0)) {
+      finalScrollY = newScrollY * 0.3; // Resistenza allo scroll ai limiti
+    }
+    
+    // Aggiorna lo stato
+    setScrollY(finalScrollY);
+    
+    
+    // Gestisce il "momentum" dello scroll - torna gradualmente a zero
+    if (scrollTimerRef.current) {
+      clearTimeout(scrollTimerRef.current);
+    }
+    
+    // Funzione per simulare l'inerzia dello scroll
+    const applyScrollMomentum = () => {
+      if (Math.abs(finalScrollY) < 2) {
+        // Se quasi fermo, torna a zero
+        setScrollY(0);
+        
+        return;
+      }
+      
+      // Applica decadimento graduale
+      const newY = finalScrollY * scrollDecay;
+      setScrollY(newY);
+      
+      // Continua l'animazione se c'è ancora movimento
+      scrollTimerRef.current = setTimeout(applyScrollMomentum, 16);
+    };
+    
+    // Avvia l'animazione di inerzia dello scroll
+    scrollTimerRef.current = setTimeout(applyScrollMomentum, 100);
+  };
+
+  // Gestisce lo swipe sugli schermi touch
+  const handleTouchStart = (e: TouchEvent) => {
+    if (isNavigating || scrollLocked) return;
+    
+    const touchStartY = e.touches[0].clientY;
+    let lastTouchY = touchStartY;
+    const startScrollY = scrollY;
+    let velocity = 0;
+    let lastTimestamp = Date.now();
+    
+    const handleTouchMove = (e: TouchEvent) => {
+      if (scrollLocked || isNavigating) return;
+      
+      const touchMoveY = e.touches[0].clientY;
+      const deltaY = lastTouchY - touchMoveY;
+      const timestamp = Date.now();
+      const timeDelta = timestamp - lastTimestamp;
+      
+      // Calcola velocità per l'inerzia
+      if (timeDelta > 0) {
+        velocity = deltaY / timeDelta * 15; // Fattore di scala per la velocità
+      }
+      
+      lastTouchY = touchMoveY;
+      lastTimestamp = timestamp;
+      
+      // Calcola la nuova posizione di scroll
+      const newScrollY = startScrollY + (touchStartY - touchMoveY);
+      
+      // Limita lo scroll se siamo al primo o all'ultimo prodotto
+      let finalScrollY = newScrollY;
+      if ((currentIndex === 0 && newScrollY < 0) || 
+          (currentIndex === rotationList.length - 1 && newScrollY > 0)) {
+        finalScrollY = newScrollY * 0.3; // Resistenza allo scroll ai limiti
+      }
+      
+      // Aggiorna lo stato
+      setScrollY(finalScrollY);
+      
+      
+      // Soglia per cambiare prodotto
+      const maxScroll = 250;
+      
+      if (finalScrollY < -maxScroll && currentIndex > 0) {
+        setScrollLocked(true);
+        
+        
+        if (containerRef.current) {
+          containerRef.current.removeEventListener('touchmove', handleTouchMove);
+        }
+        
+        setTimeout(() => {
+          handlePrevious();
+        }, 100);
+      } else if (finalScrollY > maxScroll && currentIndex < rotationList.length - 1) {
+        setScrollLocked(true);
+        
+        
+        if (containerRef.current) {
+          containerRef.current.removeEventListener('touchmove', handleTouchMove);
+        }
+        
+        setTimeout(() => {
+          handleNext();
+        }, 100);
+      }
+    };
+    
+    const handleTouchEnd = () => {
+      // Applica inerzia dopo il rilascio
+      const applyInertia = () => {
+        if (Math.abs(velocity) < 0.5 || Math.abs(scrollY) < 2) {
+          // Se la velocità è bassa o lo scroll è quasi a zero, torna a zero
+          setScrollY(0);
+          
+          return;
+        }
+        
+        // Calcola la nuova posizione con inerzia
+        const newY = scrollY + velocity;
+        
+        // Verifica se abbiamo superato il limite per cambiare prodotto
+        const maxScroll = 250;
+        if (newY < -maxScroll && currentIndex > 0) {
+          setScrollLocked(true);
+          handlePrevious();
+          return;
+        } else if (newY > maxScroll && currentIndex < rotationList.length - 1) {
+          setScrollLocked(true);
+          handleNext();
+          return;
+        }
+        
+        // Aggiorna con decadimento
+        setScrollY(newY);
+        velocity *= 0.95; // Decadimento dell'inerzia
+        
+        // Continua l'animazione
+        scrollTimerRef.current = setTimeout(applyInertia, 16);
+      };
+      
+      // Avvia l'animazione di inerzia
+      if (Math.abs(velocity) > 0.5) {
+        scrollTimerRef.current = setTimeout(applyInertia, 16);
+      } else {
+        // Se non c'è abbastanza velocità, torna a zero gradualmente
+        const returnToZero = () => {
+          if (Math.abs(scrollY) < 5) {
+            setScrollY(0);
+            
+            return;
+          }
+          
+          setScrollY(scrollY * 0.9);
+          scrollTimerRef.current = setTimeout(returnToZero, 16);
+        };
+        
+        scrollTimerRef.current = setTimeout(returnToZero, 16);
+      }
+      
+      // Cleanup
+      if (containerRef.current) {
+        containerRef.current.removeEventListener('touchmove', handleTouchMove);
+        containerRef.current.removeEventListener('touchend', handleTouchEnd);
+      }
+    };
+    
+    if (containerRef.current) {
+      containerRef.current.addEventListener('touchmove', handleTouchMove, { passive: true });
+      containerRef.current.addEventListener('touchend', handleTouchEnd, { passive: true });
+    }
+  };
+
+  // Funzione per resettare lo stato dello scroll
+  const resetScrollState = () => {
+    setScrollY(0);
+    
+    setScrollLocked(false);
+    
+    if (scrollTimerRef.current) {
+      clearTimeout(scrollTimerRef.current);
+      scrollTimerRef.current = null;
+    }
+  };
+
+  // Aggiorniamo la funzione di caricamento prodotto
   const loadProductAtIndex = async (index: number) => {
     if (isNavigating || index < 0 || index >= rotationList.length) {
+      resetScrollState();
       return;
     }
 
@@ -118,23 +343,19 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
 
     try {
       const uid = rotationList[index];
-      console.log(`Loading product at index ${index} with UID ${uid}`);
-      
       const product = await fetchProduct(uid);
       
       if (product) {
         setCurrentProduct(product);
         setCurrentIndex(index);
         updateUrlSilently(uid);
-        console.log(`Product loaded: ${product.title}`);
-      } else {
-        console.error(`Failed to load product at index ${index}`);
       }
     } catch (error) {
       console.error('Error loading product:', error);
     } finally {
       setIsLoading(false);
       setIsNavigating(false);
+      resetScrollState();
     }
   };
 
@@ -143,6 +364,11 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
     const nextIndex = currentIndex + 1;
     if (nextIndex < rotationList.length) {
       loadProductAtIndex(nextIndex);
+    } else {
+      // Sblocca lo scroll anche se non c'è un prodotto successivo
+      setTimeout(() => {
+        resetScrollState();
+      }, 300);
     }
   };
 
@@ -151,6 +377,11 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
     const prevIndex = currentIndex - 1;
     if (prevIndex >= 0) {
       loadProductAtIndex(prevIndex);
+    } else {
+      // Sblocca lo scroll anche se non c'è un prodotto precedente
+      setTimeout(() => {
+        resetScrollState();
+      }, 300);
     }
   };
 
@@ -160,85 +391,6 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
       handlePrevious();
     } else if (e.key === 'ArrowDown') {
       handleNext();
-    }
-  };
-
-  // Gestisce lo scroll wheel
-  const handleWheel = (e: WheelEvent) => {
-    if (scrollLocked) return;
-    
-    // Blocca lo scroll per evitare multiple navigazioni
-    setScrollLocked(true);
-    
-    // Determina la direzione dello scroll
-    if (e.deltaY < 0) {
-      // Scroll verso l'alto, vai al prodotto precedente
-      handlePrevious();
-    } else if (e.deltaY > 0) {
-      // Scroll verso il basso, vai al prodotto successivo
-      handleNext();
-    }
-    
-    // Sblocca lo scroll dopo un breve ritardo
-    if (scrollTimerRef.current) {
-      clearTimeout(scrollTimerRef.current);
-    }
-    
-    scrollTimerRef.current = setTimeout(() => {
-      setScrollLocked(false);
-    }, 1000); // Debounce di 1 secondo
-  };
-
-  // Gestisce lo swipe sugli schermi touch
-  const handleTouchStart = (e: TouchEvent) => {
-    const touchStartY = e.touches[0].clientY;
-    const touchThreshold = 50; // Minima distanza per considerare uno swipe
-    
-    const handleTouchMove = (e: TouchEvent) => {
-      if (scrollLocked) return;
-      
-      const touchMoveY = e.touches[0].clientY;
-      const deltaY = touchStartY - touchMoveY;
-      
-      if (Math.abs(deltaY) > touchThreshold) {
-        setScrollLocked(true);
-        
-        if (deltaY > 0) {
-          // Swipe verso l'alto, vai al prodotto successivo
-          handleNext();
-        } else {
-          // Swipe verso il basso, vai al prodotto precedente
-          handlePrevious();
-        }
-        
-        // Rimuovi listener touch dopo la navigazione
-        if (containerRef.current) {
-          containerRef.current.removeEventListener('touchmove', handleTouchMove);
-        }
-        
-        // Sblocca lo scroll dopo un breve ritardo
-        if (scrollTimerRef.current) {
-          clearTimeout(scrollTimerRef.current);
-        }
-        
-        scrollTimerRef.current = setTimeout(() => {
-          setScrollLocked(false);
-        }, 1000);
-      }
-    };
-    
-    if (containerRef.current) {
-      containerRef.current.addEventListener('touchmove', handleTouchMove, { passive: true });
-      
-      // Cleanup
-      const cleanup = () => {
-        if (containerRef.current) {
-          containerRef.current.removeEventListener('touchmove', handleTouchMove);
-          containerRef.current.removeEventListener('touchend', cleanup);
-        }
-      };
-      
-      containerRef.current.addEventListener('touchend', cleanup, { passive: true });
     }
   };
 
@@ -333,14 +485,17 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
     const container = containerRef.current;
     if (!container) return;
     
+    // Funzione wheel con opzione passive:false per permettere preventDefault
+    const wheelHandler = (e: WheelEvent) => handleWheel(e);
+    
     // Aggiungi event listener per la rotella del mouse
-    container.addEventListener('wheel', handleWheel, { passive: true });
-    // Aggiungi event listener per touch (mobile)
+    container.addEventListener('wheel', wheelHandler, { passive: false });
+    // Aggiungi event listener per touch (mobile) - ma impostando passive: true per evitare errori
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
     
     return () => {
       // Cleanup
-      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('wheel', wheelHandler);
       container.removeEventListener('touchstart', handleTouchStart);
       
       if (scrollTimerRef.current) {
@@ -348,6 +503,18 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
       }
     };
   }, [currentIndex, rotationList.length, isNavigating, scrollLocked]);
+
+  // Effetto per il controllo di sicurezza dello scroll lock
+  useEffect(() => {
+    // Forza lo sblocco dopo un timeout di sicurezza
+    const securityTimeout = setTimeout(() => {
+      if (scrollLocked) {
+        resetScrollState();
+      }
+    }, 2000); // Sicurezza: dopo 2 secondi, forza lo sblocco
+    
+    return () => clearTimeout(securityTimeout);
+  }, [scrollLocked, isNavigating]);
 
   // Mostra loader se sta caricando inizialmente
   if (isLoading && !currentProduct) {
@@ -376,8 +543,8 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
       ref={containerRef}
       className="h-[100vh] w-full flex items-center justify-center bg-black overflow-hidden"
     >
-      <div className="relative w-full h-full max-w-[400px] max-h-[100vh] flex items-center justify-center">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-transparent" />
+      <div className="relative w-full h-full max-w-[400px] max-h-[100vh] flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-transparent pointer-events-none" />
         
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-30">
@@ -385,9 +552,34 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
           </div>
         )}
         
-        <h1 className="text-3xl font-bold text-center text-white px-8 z-10">
-          {currentProduct.title}
-        </h1>
+        <div 
+          ref={contentRef}
+          className="absolute inset-0 transition-transform duration-100 ease-out" 
+          style={{ 
+            transform: `translateY(${-scrollY}px)`,
+          }}
+        >
+          <div className="w-full h-full flex flex-col items-center justify-center">
+            {/* Blocco di contenuto con margine per dare spazio allo scroll */}
+            <div className="w-full min-h-[100vh] flex items-center justify-center px-8">
+              <h1 className="text-3xl font-bold text-center text-white">
+                {currentProduct?.title}
+              </h1>
+            </div>
+            
+            {/* Contenuto aggiuntivo per dare la sensazione di scroll */}
+            <div className="w-full min-h-[50vh] flex flex-col items-center justify-start pt-20 px-8">
+              {currentIndex < rotationList.length - 1 && (
+                <div className="flex flex-col items-center">
+                  <div className="w-20 h-20 rounded-full bg-white/10 mb-10 flex items-center justify-center">
+                    <ArrowDown className="w-8 h-8 text-white/70" />
+                  </div>
+                  <div className="w-1 h-16 bg-white/10 animate-pulse"></div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
         
         <div className="absolute top-2 left-2 z-20 text-white/50 text-xs">
           {currentIndex + 1}/{rotationList.length}
@@ -407,18 +599,6 @@ export default function ShortPage({ params }: { params: Promise<{ id: string }> 
           }`}
         >
           <ArrowUp className="w-6 h-6 text-white" />
-        </button>
-        
-        <button
-          onClick={handleNext}
-          disabled={currentIndex === rotationList.length - 1 || isNavigating}
-          className={`absolute bottom-8 left-1/2 -translate-x-1/2 p-3 rounded-full backdrop-blur-sm transition-colors z-20 ${
-            currentIndex === rotationList.length - 1 || isNavigating
-              ? 'bg-white/5 cursor-not-allowed opacity-30' 
-              : 'bg-white/10 hover:bg-white/20 opacity-30 hover:opacity-100'
-          }`}
-        >
-          <ArrowDown className="w-6 h-6 text-white" />
         </button>
       </div>
     </div>
